@@ -1442,7 +1442,6 @@
 
 		ane: ane@26a000000 {
 			compatible = "apple,t8103-ane";
-			iommus = <&ane_dart 0>;
 			reg-names = "engine", "dart0", "dart1", "dart2";
 			reg = <0x2 0x6bc04000 0x0 0x24000>,
 				<0x2 0x6b800000 0x0 0x4000>,

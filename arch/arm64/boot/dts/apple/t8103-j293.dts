@@ -309,10 +309,6 @@
 #include "hwmon-fan.dtsi"
 #include "hwmon-laptop.dtsi"
 
-&ane_dart {
-	status = "okay";
-};
-
 &ane {
 	status = "okay";
 };
