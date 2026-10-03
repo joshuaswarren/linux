@@ -198,6 +198,16 @@ struct dcp_brightness {
 	u32 fade_from;
 	u32 fade_to;
 	bool fading;
+	/*
+	 * External (DisplayPort) panels such as the Apple Studio Display have
+	 * no "apple,panel" DT node, so dcp_has_panel() is false for them.
+	 * macOS drives their brightness through the very same IOMFB path as
+	 * the built-in panel, except the value is nits in 16.16 fixed point
+	 * rather than a panel specific iDAC code.
+	 */
+	bool external;
+	/* DRM connector name, so userspace can match the backlight to a monitor */
+	char conn_name[16];
 };
 
 struct audiosrv_data;
@@ -1091,6 +1101,11 @@ void iomfb_scanout_put_h17p(struct apple_dcp *dcp, struct iomfb_scanout_h17p *sc
 int dcp_backlight_init(struct apple_dcp *dcp, struct device *dev);
 void dcp_backlight_stop(struct apple_dcp *dcp);
 void dcp_backlight_finish_fade(struct apple_dcp *dcp);
+
+extern unsigned int ext_bl_max_nits;
+extern bool ext_bl_force_register;
+extern bool ext_bl_service;
+extern unsigned int ext_bl_raw_max;
 int dcp_backlight_register(struct apple_dcp *dcp);
 int dcp_backlight_update(struct apple_dcp *dcp);
 s32 dcp_ext_backlight_value(struct apple_dcp *dcp);

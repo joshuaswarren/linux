@@ -1766,6 +1766,19 @@ void dcp_hotplug(struct work_struct *work)
 		 READ_ONCE(dcp->mode_state.valid), READ_ONCE(dcp->typec_crtc_off),
 		 dcp_uses_t6020_tunnel_flow(dcp), dcp->tunnel_power_cycles);
 	/*
+	 * External DisplayPort panels do not necessarily publish
+	 * IOMFB_PROPERTY_NITS, so give them a backlight device on hotplug when
+	 * asked to.  Harmless if DCP ignores the swap's bl_value.
+	 */
+	if (connector->connected && dcp->brightness.external &&
+	    ext_bl_force_register && !dcp->brightness.bl_dev &&
+	    dcp->brightness.maximum > 0) {
+		strscpy(dcp->brightness.conn_name, connector->base.name,
+			sizeof(dcp->brightness.conn_name));
+		schedule_work(&dcp->bl_register_wq);
+	}
+
+	/*
 	 * DCP defers link training until we set a display mode. But we set
 	 * display modes from atomic_flush, so userspace needs to trigger a
 	 * flush, or the CRTC gets no signal.

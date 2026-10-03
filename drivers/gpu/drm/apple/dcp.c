@@ -5659,6 +5659,19 @@ static int dcp_comp_bind_pipe(struct device *dev, struct device *main, void *dat
 		dcp->connector_type = DRM_MODE_CONNECTOR_eDP;
 	}
 
+	/*
+	 * No "apple,panel" node means this DCP drives an external DisplayPort
+	 * output.  macOS controls the brightness of Apple's own DP panels
+	 * (Studio Display, Pro Display XDR) through the same IOMFB swap field
+	 * as the built-in panel, only the units differ: nits in 16.16 fixed
+	 * point instead of a panel specific iDAC code.
+	 */
+	/* An internal panel sets the fixed type above, even before its size is known. */
+	if (!dcp_has_panel(dcp) && dcp->fixed_connector_type != DRM_MODE_CONNECTOR_eDP) {
+		dcp->brightness.external = true;
+		dcp->brightness.maximum = ext_bl_max_nits;
+	}
+
 	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6) {
 		ret = iomfb_v26_6_bind(dcp);
 		if (!ret) {
@@ -6039,10 +6052,8 @@ VISIBLE_IF_KUNIT void dcp_comp_unbind(struct device *dev, struct device *main, v
 
 	cancel_delayed_work_sync(&dcp->bl_fallback_wq);
 	dcp_backlight_stop(dcp);
-	if (dcp->connector_type == DRM_MODE_CONNECTOR_eDP) {
-		cancel_work_sync(&dcp->bl_register_wq);
-		cancel_work_sync(&dcp->bl_update_wq);
-	}
+	cancel_work_sync(&dcp->bl_register_wq);
+	cancel_work_sync(&dcp->bl_update_wq);
 	devm_clk_put(dev, dcp->clk);
 	dcp->clk = NULL;
 	/* optional and possibly NULL, released with the bind's devres group */
