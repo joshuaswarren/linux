@@ -135,6 +135,20 @@ config HID_ACRUX_FF
 	Say Y here if you want to enable force feedback support for ACRUX
 	game controllers.
 
+config HID_APPLE_DISPLAY
+	tristate "Apple displays with HID backlight control"
+	depends on BACKLIGHT_CLASS_DEVICE
+	help
+	Reads the brightness an Apple display such as the Studio Display
+	reports over HID and shows it under /sys/class/backlight as
+	apple-display. The display accepts writes to that report and echoes
+	them back, but the panel does not change: the brightness is set
+	through the dcp-*-bl device of the DCP driver. The name apple-display
+	sorts before the built-in panel's apple-panel-bl, so a tool that takes
+	the first backlight as the built-in screen's would pick this one.
+
+	Say N unless you want to read the level the display reports.
+
 config HID_APPLE
 	tristate "Apple {i,Power,Mac}Books"
 	depends on LEDS_CLASS
