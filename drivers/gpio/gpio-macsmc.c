@@ -32,6 +32,10 @@
 #define MACSMC_J700_AFE_RESET_HI	0x130000
 
 /* J700 amfm-sunrise function-reg_on: pKW8("pcIO", 0x800000, 0x80000). */
+/* K114c (and J714c) multi-touch function-afe-reset: pKW8("pcIO", 0x10000, 0x11c0000). */
+#define MACSMC_K114C_AFE_RESET_GPIO	28
+#define MACSMC_K114C_AFE_RESET_LO	0x10000
+#define MACSMC_K114C_AFE_RESET_HI	0x11c0000
 #define MACSMC_J700_RADIO_REG_ON_GPIO	8
 #define MACSMC_J700_RADIO_REG_ON_LO	0x800000
 #define MACSMC_J700_RADIO_REG_ON_HI	0x80000
@@ -110,6 +114,8 @@ struct macsmc_gpio {
 	smc_key base_key;
 
 	bool j700_pcio;
+	bool k114c_pcio;
+	DECLARE_BITMAP(k114c_pcio_level, MAX_GPIO);
 	DECLARE_BITMAP(j700_pcio_level, MAX_GPIO);
 	DECLARE_BITMAP(pcio_template_valid, MAX_GPIO);
 	u32 pcio_template_lo[MAX_GPIO];
@@ -130,6 +136,12 @@ static bool macsmc_gpio_is_j700_pcio(struct macsmc_gpio *smcgp,
 	       (offset == MACSMC_J700_AFE_RESET_GPIO ||
 		offset == MACSMC_J700_RADIO_REG_ON_GPIO ||
 		test_bit(offset, smcgp->pcio_template_valid));
+}
+
+static bool macsmc_gpio_is_k114c_pcio(struct macsmc_gpio *smcgp,
+				      unsigned int offset)
+{
+	return smcgp->k114c_pcio && offset == MACSMC_K114C_AFE_RESET_GPIO;
 }
 
 static bool macsmc_gpio_has_output_template(struct macsmc_gpio *smcgp,
@@ -216,6 +228,7 @@ static int macsmc_gpio_get_direction(struct gpio_chip *gc, unsigned int offset)
 	int ret;
 
 	if (macsmc_gpio_is_j700_pcio(smcgp, offset) ||
+	    macsmc_gpio_is_k114c_pcio(smcgp, offset) ||
 	    macsmc_gpio_is_j713_reg_on(smcgp, offset) ||
 	    macsmc_gpio_has_output_template(smcgp, offset))
 		return GPIO_LINE_DIRECTION_OUT;
@@ -260,6 +273,8 @@ static int macsmc_gpio_get(struct gpio_chip *gc, unsigned int offset)
 	/* pcIO cannot be read back; report the last level written. */
 	if (macsmc_gpio_is_j700_pcio(smcgp, offset))
 		return test_bit(offset, smcgp->j700_pcio_level);
+	if (macsmc_gpio_is_k114c_pcio(smcgp, offset))
+		return test_bit(offset, smcgp->k114c_pcio_level);
 
 	ret = macsmc_gpio_get_direction(gc, offset);
 	if (ret < 0)
@@ -307,6 +322,21 @@ static int macsmc_gpio_set(struct gpio_chip *gc, unsigned int offset, int value)
 					    "templated GPIO %u set to %u failed: %d\n",
 					    offset, !!value, ret);
 		return ret;
+	}
+
+	if (macsmc_gpio_is_k114c_pcio(smcgp, offset)) {
+		u64 payload = ((u64)MACSMC_K114C_AFE_RESET_HI << 32) |
+			      MACSMC_K114C_AFE_RESET_LO | (value ? 1 : 0);
+
+		ret = apple_smc_write_u64(smcgp->smc, SMC_KEY(pcIO), payload);
+		if (ret < 0) {
+			dev_err_ratelimited(smcgp->dev,
+					    "pcIO GPIO %u set to %u failed: %d\n",
+					    offset, !!value, ret);
+			return ret;
+		}
+		set_bit(offset, smcgp->k114c_pcio_level);
+		return 0;
 	}
 
 	if (macsmc_gpio_is_j700_pcio(smcgp, offset)) {
@@ -361,6 +391,8 @@ static int macsmc_gpio_init_valid_mask(struct gpio_chip *gc,
 		bitmap_or(valid_mask, valid_mask, smcgp->pcio_template_valid,
 			  ngpios);
 	}
+	if (smcgp->k114c_pcio)
+		set_bit(MACSMC_K114C_AFE_RESET_GPIO, valid_mask);
 	bitmap_or(valid_mask, valid_mask, smcgp->output_template_valid, ngpios);
 
 	for (i = 0; i < count; i++) {
@@ -525,6 +557,9 @@ static int macsmc_gpio_probe(struct platform_device *pdev)
 	if (device_is_compatible(&pdev->dev, "apple,smc-pcio-gpio"))
 		return macsmc_pcio_probe(smcgp);
 	smcgp->base_key = data ? data->base_key : _SMC_KEY("gP\0\0");
+	smcgp->k114c_pcio = device_is_compatible(&pdev->dev, "apple,smc-gpio") &&
+			    (of_machine_is_compatible("apple,j714c") ||
+			     of_machine_is_compatible("apple,k114c"));
 	smcgp->j700_pcio = of_machine_is_compatible("apple,j700") &&
 				device_is_compatible(&pdev->dev, "apple,smc-gpio");
 	smcgp->j713 = apple_t8132_managed_radio() ||
