@@ -46,6 +46,9 @@
 	aliases {
 		keyboard = &keyboard;
 		serial0 = &serial0;
+		/* kboot fills the N1's factory addresses from /chosen through these */
+		wifi0 = &n1_alpha;
+		bluetooth0 = &n1_beta;
 	};
 
 	chosen {
@@ -150,3 +153,106 @@
 
 
 #include "t6050-k114c-usb2.dtsi"
+/*
+ * iBoot leaves the N1 port's gates in automatic power management with the
+ * target on and the block gated (APCIE_SYS_GP and APHY_GP_AUS5 actual 0,
+ * APCIE_PHY_SW actual 4). The kernel trains the port, so these gates stay
+ * at the requested state.
+ */
+&ps_apcie_sys_gp {
+	apple,no-auto-pm;
+};
+
+&ps_apcie_phy_sw {
+	apple,no-auto-pm;
+};
+
+&ps_aphy_gp_aus5 {
+	apple,no-auto-pm;
+};
+
+/*
+ * The N1 (Wi-Fi and Bluetooth) on apcie0 port 0, the same port, registers
+ * and pins as the J714c (K114c ADT 2026-11-10: pci-bridge0 function-perst =
+ * GPIO 80, function-reset = pKW4('gP13', ...), so SMC GPIO 19; dart-apcie0
+ * AIC 1524; apcie0 port0 AIC 1523; msi-vector-offset 1824 with pci-bridge0
+ * owning 32 vectors; root board-id 0x04). iBoot leaves the port untrained
+ * and the N1 off (SMC GPIO gP13 low, PERST# GPIO 80 low); the kernel trains
+ * it (apple_pcie_t6050_cold_train, entered when adopt finds the link down
+ * and the port names pwren-gpios; apple,link-trained-by-bootloader is the
+ * adopt path's port-validity flag, not a claim about who trained it).
+ * Platform id = (board-id 0x04 << 16) | 0x6050 by the J714c/J716c rule; the
+ * FTAB comes from the macOS install and is not shipped by anyone.
+ */
+&pcie0 {
+	reg = <0x1c 0xb0000000 0x0 0x10000000>,		/* ADT reg[0] */
+	      <0x4 0x14000000 0x0 0x4000>,		/* ADT reg[1] */
+	      <0x4 0x10028000 0x0 0x8000>,		/* ADT reg[16] */
+	      <0x4 0x17010000 0x0 0x4000>,		/* ADT reg[18] */
+	      <0x4 0x10024000 0x0 0x4000>,		/* ADT reg[19] */
+	      <0x4 0x17020000 0x0 0x4000>,		/* ADT reg[3] */
+	      <0x4 0x17004000 0x0 0x4000>,		/* phy-common: ADT reg[2] + 0x4000 */
+	      <0x4 0x16000000 0x0 0x1000000>,		/* ADT reg[5]: K114c size */
+	      <0x4 0x15044000 0x0 0x4000>,		/* ADT reg[6] */
+	      <0x4 0x17000000 0x0 0x800000>,		/* ADT reg[2]: K114c size */
+	      <0x4 0x17800000 0x0 0x1b4000>;		/* ADT reg[4] */
+	reg-names = "config", "rc", "port0", "phy0", "intr2axi0", "phy-shared", "phy-common",
+		    "axi2af", "pcieclkgen", "phy-window", "phy-ip";
+	interrupts = <AIC_IRQ 1523 IRQ_TYPE_LEVEL_HIGH>;
+	interrupt-names = "port0";
+
+	/* The N1's three functions are on DART streams 1-3 */
+	iommu-map = <0x100 &dart_apcie0 1 3>;
+	bus-range = <0 8>; /* ADT bus-range 0x0,0x8 (the J714c's says 0-4) */
+
+	port00: pci@0,0 {
+		device_type = "pci";
+		reg = <0x0 0 0 0 0>;
+		bus-range = <1 1>;
+		apple,link-trained-by-bootloader;
+		/* PERST#, for the kernel's train and the root-port reset after the N1's ROM stage */
+		reset-gpios = <&pinctrl_ap 80 GPIO_ACTIVE_LOW>;
+		/* The N1's power/reset: ADT function-reset = pKW4('gP13', ...), SMC GPIO pin 0x13 */
+		pwren-gpios = <&smc_gpio 19 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+
+		#address-cells = <3>;
+		#size-cells = <2>;
+		ranges;
+
+		interrupt-controller;
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0 0 0 7>;
+		interrupt-map = <0 0 0 1 &port00 0 0 0 0>,
+				<0 0 0 2 &port00 0 0 0 1>,
+				<0 0 0 3 &port00 0 0 0 2>,
+				<0 0 0 4 &port00 0 0 0 3>;
+
+		n1_control: control@0,0 {
+			compatible = "pci106b,1900";
+			reg = <0x10000 0x0 0x0 0x0 0x0>;
+			firmware-name = "apple/centauri/k114c-ftab.bin";
+			apple,centauri-platform-id = <0x00046050>;
+			apple,centauri-protocol = <27>;
+		};
+
+		n1_alpha: wifi@0,1 {
+			compatible = "pci106b,1902";
+			reg = <0x10100 0x0 0x0 0x0 0x0>;
+			local-mac-address = [00 00 00 00 00 00];
+		};
+
+		n1_beta: bluetooth@0,2 {
+			compatible = "pci106b,1903";
+			reg = <0x10200 0x0 0x0 0x0 0x0>;
+			local-bd-address = [00 00 00 00 00 00];
+		};
+	};
+};
+
+&dart_apcie0 {
+	status = "okay";
+};
+
+#include "t6050-j714c-pcie-tunables.dtsi"
+#include "t6050-k114c-pcie-tunables.dtsi"
