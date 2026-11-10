@@ -294,11 +294,34 @@ dchid_get_interface(struct dockchannel_hid *dchid, int index, const char *name)
 				power_method, name);
 			goto err_put_node;
 		}
-		if (power_method == DCHID_POWER_METHOD_2 &&
-		    !firmware_managed_reset && !dchid->afe_reset) {
-			dev_err(dchid->dev, "Power method 2 for %s needs the AFE reset line\n",
-				name);
-			goto err_put_node;
+		if (power_method == DCHID_POWER_METHOD_2 && !firmware_managed_reset) {
+			struct fwnode_handle *fwnode = of_fwnode_handle(of_node);
+
+			/* An interface with its own reset line (kiwi) does not share the AFE one. */
+			reset = devm_fwnode_gpiod_get(dchid->dev, fwnode, "apple,reset",
+						      GPIOD_OUT_LOW, "dchid-reset");
+			if (IS_ERR(reset)) {
+				if (PTR_ERR(reset) != -ENOENT) {
+					dev_err(dchid->dev, "Reset line of %s: %pe\n", name, reset);
+					goto err_put_node;
+				}
+				reset = dchid->afe_reset;
+			}
+			if (!reset) {
+				dev_err(dchid->dev, "Power method 2 for %s needs a reset line\n",
+					name);
+				goto err_put_node;
+			}
+
+			power = devm_fwnode_gpiod_get(dchid->dev, fwnode, "apple,power",
+						      GPIOD_OUT_HIGH, "dchid-power");
+			if (IS_ERR(power)) {
+				if (PTR_ERR(power) != -ENOENT) {
+					dev_err(dchid->dev, "Power line of %s: %pe\n", name, power);
+					goto err_put_node;
+				}
+				power = NULL;
+			}
 		}
 	}
 
