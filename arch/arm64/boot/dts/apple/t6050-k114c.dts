@@ -99,6 +99,63 @@
 	};
 };
 
+&fpwm0 {
+	status = "okay";
+};
+
+&mtp {
+	status = "okay";
+};
+
+/* The AP GPIO controller: the N1's PERST# is GPIO 80 on it, so pcie-apple defers until it binds. */
+&pinctrl_ap {
+	status = "okay";
+};
+
+&mtp_mbox {
+	status = "okay";
+};
+
+&mtp_dart {
+	status = "okay";
+};
+
+&mtp_dockchannel {
+	status = "okay";
+};
+
+&mtp_hid {
+	/*
+	 * ADT multi-touch function-afe-reset = smc-pmu pKW8('pcIO', 0x10000,
+	 * 0x11c0000), SMC pcIO output 28; level 1 asserts the reset. Left to
+	 * the MTP firmware, the AFE sometimes never answers ("No HINT_L").
+	 */
+	apple,afe-reset-gpios = <&smc_gpio 28 GPIO_ACTIVE_HIGH>;
+
+	mtp_mt: multi-touch {
+		firmware-name = "apple/tpmtfw-k114c.bin";
+		apple,power-method = <2>;
+	};
+
+	keyboard: keyboard {
+		hid-country-code = <0>;
+		apple,keyboard-layout-id = <0>;
+	};
+
+	stm {
+	};
+
+	actuator {
+	};
+
+	tp_accel {
+	};
+};
+
+#include "hwmon-common.dtsi"
+#include "hwmon-fan-dual.dtsi"
+#include "hwmon-laptop.dtsi"
+
 /*
  * Pin 112's register takes an SError when read, so only the pins a node here
  * names are exposed: 80 (PCIe port 0's PERST#); 106 and 107, the speaker amps'
