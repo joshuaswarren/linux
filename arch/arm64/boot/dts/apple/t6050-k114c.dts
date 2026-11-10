@@ -1,0 +1,150 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Apple MacBook Pro (14-inch, M5 Max, 18 CPU cores, OLED)
+ *
+ * target-type: K114c
+ *
+ * Initial RAM boot resources measured on the K114c (ADT ioreg gather of
+ * 2026-11-10). The loader supplies usable memory, CPU release addresses and
+ * framebuffer geometry. Peripheral power domains come from t6050-pmgr.dtsi;
+ * the framebuffer holds the display domain.
+ *
+ * Compared with Edi Moldovan's J714c this board file leaves out, with
+ * reasons:
+ * - the DCP display pipeline (his t6050-j714c-display.dtsi): the console
+ *   runs on the simple framebuffer the loader fills, and the K114c's OLED
+ *   panel and DCP firmware segment table have not been measured, so there
+ *   is no K114c display dtsi to include;
+ * - the GPU (gfx/gfx1 mbox, gpu): not needed to boot; Edi's loader-side
+ *   ADT validation (dt_set_gpu_g17) is not exercised here either;
+ * - the PMP (t6050-pmp.dtsi and his pmp-tunables): not needed to boot, and
+ *   this K114c's ADT has no pmp device node at all;
+ * - the camera and ISP (his t6050-j714c-isp.dtsi): no K114c camera values
+ *   measured;
+ * - audio (I2C amps and jack codec, the AOP, the sound card): out of scope
+ *   for this bring-up and the K114c ADT amplifier layout is unmeasured.
+ */
+
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/interrupt-controller/apple-aic.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/leds/common.h>
+
+#include "t6050.dtsi"
+#include "t6050-smc.dtsi"
+
+/ {
+	compatible = "apple,k114c", "apple,t6050", "apple,arm-platform";
+	model = "Apple MacBook Pro (14-inch, M5 Max, 18 CPU cores, OLED)";
+
+	#address-cells = <2>;
+	#size-cells = <2>;
+	interrupt-parent = <&aic>;
+
+	aliases {
+		keyboard = &keyboard;
+		serial0 = &serial0;
+	};
+
+	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		stdout-path = "serial0:1500000n8";
+
+		framebuffer0: framebuffer@0 {
+			compatible = "apple,simple-framebuffer", "simple-framebuffer";
+			reg = <0 0 0 0>; /* Filled by the loader. */
+			status = "okay"; /* m1n1 only enables it on chips it knows. */
+			power-domains = <&ps_disp_cpu>;
+			apple,internal-panel; /* simpledrm reports it as eDP */
+		};
+	};
+
+	memory@10000000000 {
+		device_type = "memory";
+		reg = <0x100 0 0 0>; /* Filled by the loader. */
+	};
+
+	led-controller {
+		compatible = "pwm-leds";
+		led-0 {
+			pwms = <&fpwm0 0 40000>;
+			label = "kbd_backlight";
+			function = LED_FUNCTION_KBD_BACKLIGHT;
+			color = <LED_COLOR_ID_WHITE>;
+			max-brightness = <255>;
+			default-state = "keep";
+		};
+	};
+};
+
+&fpwm0 {
+	status = "okay";
+};
+
+&mtp {
+	status = "okay";
+};
+
+&mtp_mbox {
+	status = "okay";
+};
+
+&mtp_dart {
+	status = "okay";
+};
+
+&mtp_dockchannel {
+	status = "okay";
+};
+
+&mtp_hid {
+	/*
+	 * ADT multi-touch function-afe-reset = smc-pmu pKW8('pcIO', 0x10000,
+	 * 0x11c0000), SMC pcIO output 28; level 1 asserts the reset. Left to
+	 * the MTP firmware, the AFE sometimes never answers ("No HINT_L").
+	 */
+	apple,afe-reset-gpios = <&smc_gpio 28 GPIO_ACTIVE_HIGH>;
+
+	mtp_mt: multi-touch {
+		firmware-name = "apple/tpmtfw-k114c.bin";
+		apple,power-method = <2>;
+	};
+
+	keyboard: keyboard {
+		hid-country-code = <0>;
+		apple,keyboard-layout-id = <0>;
+	};
+
+	stm {
+	};
+
+	actuator {
+	};
+
+	tp_accel {
+	};
+};
+
+#include "hwmon-common.dtsi"
+#include "hwmon-fan-dual.dtsi"
+#include "hwmon-laptop.dtsi"
+
+/*
+ * The T6050 SMC spells the fan mode keys F0md/F1md; F0Md/F1Md from
+ * hwmon-fan*.dtsi do not exist (as on the J714c).
+ */
+&smc_hwmon {
+	fan-F0Ac {
+		apple,fan-mode = "F0md";
+	};
+
+	fan-F1Ac {
+		apple,fan-mode = "F1md";
+	};
+};
+
