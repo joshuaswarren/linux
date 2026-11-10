@@ -110,6 +110,10 @@
 	status = "okay";
 };
 
+&pinctrl_nub {
+	status = "okay";
+};
+
 &mtp_hid {
 	/*
 	 * ADT multi-touch function-afe-reset = smc-pmu pKW8('pcIO', 0x10000,
@@ -121,6 +125,20 @@
 	mtp_mt: multi-touch {
 		firmware-name = "apple/tpmtfw-k114c.bin";
 		apple,power-method = <2>;
+	};
+
+	/*
+	 * The touch-screen interface. ADT kiwi: image-tag fsat, power method 2.
+	 * Its firmware has the same HIDF container as the multi-touch one. Its
+	 * reset and power lines are NUB GPIO pins 25 and 26 (ADT function-reset
+	 * and function-power), not the shared multi-touch AFE reset. Level 1
+	 * asserts the reset, as for the AFE one [INFERENCE].
+	 */
+	kiwi {
+		firmware-name = "apple/tpkiwifw-k114c.bin";
+		apple,power-method = <2>;
+		apple,reset-gpios = <&pinctrl_nub 25 GPIO_ACTIVE_HIGH>;
+		apple,power-gpios = <&pinctrl_nub 26 GPIO_ACTIVE_HIGH>;
 	};
 
 	keyboard: keyboard {
