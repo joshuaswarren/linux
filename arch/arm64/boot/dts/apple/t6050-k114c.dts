@@ -93,6 +93,11 @@
 	status = "okay";
 };
 
+/* The AP GPIO controller: the N1's PERST# is GPIO 80 on it, so pcie-apple defers until it binds. */
+&pinctrl_ap {
+	status = "okay";
+};
+
 &mtp_mbox {
 	status = "okay";
 };
