@@ -53,6 +53,7 @@ struct centauri {
 	size_t firmware_size;
 	u32 image_response;
 	bool boot_attempted;
+	unsigned int fw_wait;
 	bool link_ready;
 	struct centauri_ipc *ipc;
 	struct centauri_wifi *wifi;

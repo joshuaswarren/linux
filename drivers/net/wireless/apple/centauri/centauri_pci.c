@@ -78,6 +78,13 @@ static irqreturn_t centauri_control_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+/*
+ * This driver is built in and probes from the initramfs, before the root file system that
+ * holds the personalized firmware is mounted. Poll for the file instead of failing the boot.
+ */
+#define CEN_FW_WAIT_TRIES	240
+#define CEN_FW_WAIT_MS		500
+
 static void centauri_free_boot(struct centauri *c)
 {
 	struct device *dev = &c->pdev->dev;
@@ -122,7 +129,9 @@ static int centauri_rom_boot(struct centauri *c)
 
 	ret = request_firmware_direct(&fw, c->firmware_name, dev);
 	if (ret) {
-		dev_err(dev, "required firmware %s unavailable: %d\n", c->firmware_name, ret);
+		if (ret != -ENOENT || c->fw_wait >= CEN_FW_WAIT_TRIES)
+			dev_err(dev, "required firmware %s unavailable: %d\n",
+				c->firmware_name, ret);
 		return ret;
 	}
 	if (READ_ONCE(c->removing)) {
@@ -287,6 +296,7 @@ static int centauri_cycle(struct centauri *c)
 static void centauri_boot_worker(struct work_struct *work)
 {
 	struct centauri *c = container_of(to_delayed_work(work), struct centauri, boot_work);
+	unsigned int delay_ms = 20;
 	bool retry = false;
 	int ret;
 
@@ -317,6 +327,12 @@ static void centauri_boot_worker(struct work_struct *work)
 			retry = true;
 			break;
 		}
+		if (ret == -ENOENT && c->boot_phase == CEN_BOOT_ROM && !c->boot_attempted &&
+		    c->fw_wait++ < CEN_FW_WAIT_TRIES) {
+			delay_ms = CEN_FW_WAIT_MS;
+			retry = true;
+			break;
+		}
 		if (ret) {
 			dev_err(&c->pdev->dev, "N1 automatic startup failed in phase%u: %d\n",
 				c->boot_phase, ret);
@@ -329,7 +345,7 @@ out:
 		c->boot_phase = CEN_BOOT_STOPPED;
 	mutex_unlock(&c->boot_lock);
 	if (retry && !READ_ONCE(c->removing))
-		queue_delayed_work(system_long_wq, &c->boot_work, msecs_to_jiffies(20));
+		queue_delayed_work(system_long_wq, &c->boot_work, msecs_to_jiffies(delay_ms));
 }
 
 static int centauri_probe(struct pci_dev *pdev, const struct pci_device_id *id)
