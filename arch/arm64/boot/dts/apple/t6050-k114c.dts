@@ -148,3 +148,5 @@
 	};
 };
 
+
+#include "t6050-k114c-usb2.dtsi"
