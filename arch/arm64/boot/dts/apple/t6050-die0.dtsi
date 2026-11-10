@@ -141,6 +141,24 @@
 	};
 
 	/*
+	 * The NUB (always-on die) GPIO block. ADT nub-gpio0@881E4000: 61 pins,
+	 * seven AIC interrupts 706 to 718, pmgr nub_gpio. It holds the reset and
+	 * power lines of the touch-screen (kiwi) interface; its interrupts are
+	 * left unused. Enabled by the board DT together with its first user.
+	 */
+	pinctrl_nub: pinctrl@2881e4000 {
+		compatible = "apple,t6050-pinctrl", "apple,t8140-pinctrl";
+		reg = <0x2 0x881e4000 0x0 0x4000>;
+		power-domains = <&ps_nub_gpio>;
+
+		gpio-controller;
+		#gpio-cells = <2>;
+		gpio-ranges = <&pinctrl_nub 0 0 61>;
+		apple,npins = <61>;
+		status = "disabled";
+	};
+
+	/*
 	 * I2C controllers. ADT /arm-io/i2c1..3: 0x305014000, 0x305018000,
 	 * 0x30501c000 (+ 0x4000 each), AIC interrupts 1376-1378, pmgr I2C1-3.
 	 * SCL/SDA are AP pins 60/61, 62/63 and 64/65; iBoot leaves them muxed
