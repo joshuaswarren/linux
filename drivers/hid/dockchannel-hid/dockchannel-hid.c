@@ -258,10 +258,7 @@ dchid_get_interface(struct dockchannel_hid *dchid, int index, const char *name)
 	u32 power_method = DCHID_POWER_METHOD_1;
 	bool firmware_managed_reset = false;
 	struct device_node *of_node = NULL;
-<<<<<<< HEAD
-=======
 	struct gpio_desc *reset = NULL, *power = NULL, *clock = NULL;
->>>>>>> c5b32b3617 (HID: dockchannel-hid: drive an optional clock enable line of a power method 2 interface)
 	struct dchid_iface *iface;
 
 	if (READ_ONCE(dchid->stopping))
@@ -356,12 +353,9 @@ dchid_get_interface(struct dockchannel_hid *dchid, int index, const char *name)
 	iface->of_node = of_node;
 	iface->power_method = power_method;
 	iface->firmware_managed_reset = firmware_managed_reset;
-<<<<<<< HEAD
-=======
 	iface->reset = reset;
 	iface->power = power;
 	iface->clock = clock;
->>>>>>> c5b32b3617 (HID: dockchannel-hid: drive an optional clock enable line of a power method 2 interface)
 	iface->out_report = -1;
 	init_completion(&iface->out_complete);
 	init_completion(&iface->ready);
@@ -641,14 +635,6 @@ static int dchid_pm2_set_power(struct dchid_iface *iface, u8 state)
 		if (state == DCHID_POWER_STATE_ON)
 			fsleep(50 * USEC_PER_MSEC);
 	} else {
-<<<<<<< HEAD
-		bool off = state == DCHID_POWER_STATE_OFF;
-
-		ret = gpiod_set_value_cansleep(dchid->afe_reset, off);
-		if (ret < 0) {
-			dev_err(dchid->dev, "%s: failed to %s the AFE reset: %d\n",
-				iface->name, off ? "assert" : "release", ret);
-=======
 		if (state == DCHID_POWER_STATE_ON && iface->power)
 			gpiod_set_value_cansleep(iface->power, 1);
 		if (iface->clock)
@@ -657,7 +643,6 @@ static int dchid_pm2_set_power(struct dchid_iface *iface, u8 state)
 		ret = gpiod_set_value_cansleep(iface->reset,
 					       state == DCHID_POWER_STATE_OFF);
 		if (ret < 0)
->>>>>>> c5b32b3617 (HID: dockchannel-hid: drive an optional clock enable line of a power method 2 interface)
 			return ret;
 		}
 		dev_dbg(dchid->dev, "%s: AFE reset %s\n", iface->name,
