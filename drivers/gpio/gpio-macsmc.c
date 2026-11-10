@@ -322,7 +322,8 @@ static int macsmc_gpio_probe(struct platform_device *pdev)
 	if (device_is_compatible(&pdev->dev, "apple,smc-gpio")) {
 		if (of_machine_is_compatible("apple,j700"))
 			smcgp->pcio = macsmc_j700_pcio;
-		else if (of_machine_is_compatible("apple,j714c"))
+		else if (of_machine_is_compatible("apple,j714c") ||
+			 of_machine_is_compatible("apple,k114c"))
 			smcgp->pcio = macsmc_j714c_pcio;
 	}
 
