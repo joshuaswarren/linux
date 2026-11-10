@@ -3638,7 +3638,7 @@ static int apple_pcie_probe(struct platform_device *pdev)
 		 * longer switches it off under a live link.
 		 */
 		if (!of_get_available_child_count(dev->of_node))
-			return -EINVAL;
+			return dev_err_probe(dev, -EINVAL, "adopted host has no available port node\n");
 		for_each_available_child_of_node_scoped(dev->of_node, child) {
 			u32 reg;
 
@@ -3646,7 +3646,9 @@ static int apple_pcie_probe(struct platform_device *pdev)
 			if (of_property_read_u32(child, "reg", &reg) || reg & ~0xf800 ||
 			    (reg >> 11) > 3 ||
 			    !of_property_read_bool(child, "apple,link-trained-by-bootloader"))
-				return -EINVAL;
+				return dev_err_probe(dev, -EINVAL,
+						     "port %pOF: bad reg or missing apple,link-trained-by-bootloader\n",
+						     child);
 			/*
 			 * A port whose endpoint needs a root-port reset names its PERST#
 			 * line: probe waits for the line's controller before any port is
