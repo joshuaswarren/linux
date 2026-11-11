@@ -18,8 +18,10 @@
  * - the GPU (gfx/gfx1 mbox, gpu): enabled here for the K114c GPU bring-up
  *   (Main 15:49 CST); the loader-side ADT validation (dt_set_gpu_g17) must
  *   pass on this machine or the boot firmware disables the nodes again;
- * - the PMP (t6050-pmp.dtsi and his pmp-tunables): not needed to boot, and
- *   this K114c's ADT has no pmp device node at all;
+ * - the PMP (t6050-pmp.dtsi and the pmp-tunables): the ADT carries pmp0
+ *   (/arm-io/pmp0, asc at 0x284e00000, clock-gates 0x1b 0x1c = ps_pmp +
+ *   ps_pms_sram); it is included here so the GPU power vote reaches the
+ *   PMP firmware and the b2bd GPU fabric turns on;
  * - the camera and ISP (his t6050-j714c-isp.dtsi): no K114c camera values
  *   measured;
  * - audio (I2C amps and jack codec, the AOP, the sound card): out of scope
@@ -36,6 +38,8 @@
 #include "t6050.dtsi"
 #include "t6050-smc.dtsi"
 #include "t6050-gpu.dtsi"
+#include "t6050-pmp.dtsi"
+#include "t6050-j714c-pmp-tunables.dtsi"
 
 /* GPU bring-up (Main 15:49 CST): enable the GPU and its mailboxes. The
  * UAT reserved-memory nodes are defined in t6050-gpu.dtsi with zero
@@ -52,6 +56,17 @@
 
 &gpu {
 	status = "okay";
+};
+
+/* PMP bring-up (ADT /arm-io/pmp0 clock-gates 0x1b 0x1c): the PMP
+ * coprocessor owns the b2bd GPU fabric plane and drops direct CPU
+ * writes to those ps registers. The GPU vote goes through the
+ * pmp_report_gfx entry (reg 0xf = soc-device 0x10) that t6050-pmp.dtsi
+ * hangs behind ps_gfx on the gpu node; these two gates power the PMP
+ * ASC and its SRAM. The node stays status="disabled": pmp-report.c
+ * (starts_pmp on T6050) takes the start over from the disabled node. */
+&pmp {
+	power-domains = <&ps_pmp>, <&ps_pms_sram>;
 };
 
 / {
