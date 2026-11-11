@@ -1121,6 +1121,9 @@ static void dchid_handle_init(struct dockchannel_hid *dchid, void *data, size_t 
 
 static void dchid_handle_gpio(struct dockchannel_hid *dchid, void *data, size_t length)
 {
+	struct gpio_desc *cmd_gpio = NULL;
+	unsigned int g;
+
 	struct dchid_gpio_cmd *cmd = data;
 	struct dchid_iface *iface;
 	u32 retcode = 0xe000f00d; /* Give it a random Apple-style error code */
@@ -1143,7 +1146,14 @@ static void dchid_handle_gpio(struct dockchannel_hid *dchid, void *data, size_t 
 	if (dchid_request_gpio(iface) < 0)
 		goto err;
 
-	if (!iface->gpio || cmd->gpio != iface->gpio_id) {
+	cmd_gpio = NULL;
+	for (g = 0; g < iface->gpio_count; g++) {
+		if (iface->gpio_ids[g] == cmd->gpio) {
+			cmd_gpio = iface->gpios[g];
+			break;
+		}
+	}
+	if (!cmd_gpio) {
 		dev_err(dchid->dev, "Got GPIO command for bad GPIO %s#%d\n",
 			iface->name, cmd->gpio);
 		goto err;
@@ -1154,9 +1164,9 @@ static void dchid_handle_gpio(struct dockchannel_hid *dchid, void *data, size_t 
 	switch (cmd->cmd) {
 	case 3:
 		/* Pulse.  */
-		gpiod_set_value_cansleep(iface->gpio, 1);
+		gpiod_set_value_cansleep(cmd_gpio, 1);
 		msleep(10); /* Random guess... */
-		gpiod_set_value_cansleep(iface->gpio, 0);
+		gpiod_set_value_cansleep(cmd_gpio, 0);
 		retcode = 0;
 		break;
 	default:
