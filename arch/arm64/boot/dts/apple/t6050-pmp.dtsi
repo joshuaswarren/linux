@@ -181,20 +181,24 @@
 			power-domains = <&ps_ane_sys>;
 		};
 
-		/* The GPU's vote, behind the gfx power state. */
+		/* The GPU's vote. It is ps_gfx's parent, so genpd sends it before
+		 * the pmgr write. The report genpd is IRQ-safe, so the link holds. */
 		pmp_report_gfx: report@f {
 			compatible = "apple,t6050-pmp-v2-report-entry",
 				     "apple,t6000-pmp-v2-report-entry";
 			reg = <0xf>;
 			label = "pmp-gfx";
 			#power-domain-cells = <0>;
-			power-domains = <&ps_gfx>;
 		};
 	};
 };
 
+&ps_gfx {
+	power-domains = <&ps_afr>, <&ps_gpx>, <&pmp_report_gfx>;
+};
+
 &gpu {
-	power-domains = <&pmp_report_gfx>;
+	power-domains = <&ps_gfx>;
 };
 
 / {
