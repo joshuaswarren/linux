@@ -81,6 +81,9 @@ struct apple_rtkit {
 	bool crashlog_inherited;
 	bool oslog_inherited;
 
+	/* ESR of the last crashlog register dump, to tell a matching Csta apart. */
+	u64 last_dumped_esr;
+
 	struct workqueue_struct *wq;
 };
 

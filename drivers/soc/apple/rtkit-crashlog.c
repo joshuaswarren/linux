@@ -30,7 +30,6 @@
 #define CSTA_FAR_OFF 0x328
 #define CSTA_ESR_OFF 0x338
 
-static u64 last_dumped_esr;
 
 /* For COMPILE_TEST on non-ARM64 architectures */
 #ifndef PSR_MODE_EL0t
@@ -149,7 +148,7 @@ static void apple_rtkit_crashlog_dump_regs(struct apple_rtkit *rtk, u8 *bfr,
 	}
 
 	regs = (struct apple_rtkit_crashlog_regs *)bfr;
-	last_dumped_esr = regs->esr;
+	rtk->last_dumped_esr = regs->esr;
 
 	switch (regs->psr & PSR_MODE_MASK) {
 	case PSR_MODE_EL0t:
@@ -197,16 +196,28 @@ static void apple_rtkit_crashlog_dump_regs(struct apple_rtkit *rtk, u8 *bfr,
 	dev_warn(rtk->dev, "\n");
 }
 
+/* A crashlog can carry several KB per section; the console is slow, so bound the output. */
+#define CRASHLOG_HEX_MAX_WORDS 32
+#define CRASHLOG_MAX_SECTIONS 32
+
 static void apple_rtkit_crashlog_dump_hexwords(struct apple_rtkit *rtk,
 					       u8 *bfr, size_t size)
 {
-	size_t i;
-	u64 v;
+	size_t i, n = min_t(size_t, size / 8, CRASHLOG_HEX_MAX_WORDS);
+	u64 v[4];
 
-	for (i = 0; i + 8 <= size; i += 8) {
-		memcpy(&v, bfr + i, 8);
-		dev_warn(rtk->dev, "RTKit:   +%03zx = %016llx", i, v);
+	for (i = 0; i < n; i += 4) {
+		size_t k, cnt = min_t(size_t, n - i, 4);
+
+		for (k = 0; k < cnt; k++)
+			memcpy(&v[k], bfr + (i + k) * 8, 8);
+		for (; k < 4; k++)
+			v[k] = 0;
+		dev_warn(rtk->dev, "RTKit:   +%03zx = %016llx %016llx %016llx %016llx",
+			 i * 8, v[0], v[1], v[2], v[3]);
 	}
+	if (size / 8 > n)
+		dev_warn(rtk->dev, "RTKit:   (%zu more words not shown)", size / 8 - n);
 }
 
 static void apple_rtkit_crashlog_dump_core_state(struct apple_rtkit *rtk,
@@ -228,14 +239,14 @@ static void apple_rtkit_crashlog_dump_core_state(struct apple_rtkit *rtk,
 		memcpy(&esr, bfr + 4 + CSTA_ESR_OFF, 4);
 	}
 
-	if (esr == last_dumped_esr && esr)
+	if (esr == rtk->last_dumped_esr && esr)
 		dev_warn(rtk->dev,
 			 "RTKit: Interrupted context: ELR = 0x%llx FAR = 0x%llx (ESR 0x%x matches dump)",
 			 pc, far, esr);
 	else
 		dev_warn(rtk->dev,
 			 "RTKit: Interrupted context (layout unverified, ESR 0x%x != dump 0x%llx): ELR = 0x%llx FAR = 0x%llx",
-			 esr, last_dumped_esr, pc, far);
+			 esr, rtk->last_dumped_esr, pc, far);
 
 	apple_rtkit_crashlog_dump_hexwords(rtk, bfr + 4, size - 4);
 }
@@ -263,6 +274,7 @@ void apple_rtkit_crashlog_dump(struct apple_rtkit *rtk, u8 *bfr, size_t size)
 	size_t offset;
 	u32 section_fourcc, section_size, payload;
 	struct apple_rtkit_crashlog_header header;
+	unsigned int n_sections = 0;
 
 	memcpy(&header, bfr, sizeof(header));
 	if (header.fourcc != APPLE_RTKIT_CRASHLOG_HEADER_FOURCC) {
@@ -296,6 +308,11 @@ void apple_rtkit_crashlog_dump(struct apple_rtkit *rtk, u8 *bfr, size_t size)
 			return;
 		}
 		payload = section_size - 16;
+		if (++n_sections > CRASHLOG_MAX_SECTIONS) {
+			dev_warn(rtk->dev, "RTKit: Crashlog has more than %d sections, stopping",
+				 CRASHLOG_MAX_SECTIONS);
+			return;
+		}
 
 		switch (section_fourcc) {
 		case APPLE_RTKIT_CRASHLOG_HEADER_FOURCC:
