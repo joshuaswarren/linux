@@ -103,10 +103,19 @@ int asahi_g15_pmp_get(struct device *dev)
  * Give back the vote of asahi_g15_pmp_get() after a start that failed before
  * the firmware was touched. The full M3 stack's J514S bridge has no release:
  * its vote stays, as before.
+ *
+ * Only the machine whose get() voted may release it: the release carries the
+ * T6030 AGX device id (5), so a put() from any other compatible would send a
+ * spurious vote into the PMP.
  */
 void asahi_g15_pmp_put(struct device *dev)
 {
-	int ret = apple_pmp_set_device_power(0x0f, 5, 0);
+	int ret;
+
+	if (!asahi_g15_board() || !dev->of_node ||
+	    !of_device_is_compatible(dev->of_node, "apple,agx-t6030"))
+		return;
+	ret = apple_pmp_set_device_power(0x0f, 5, 0);
 
 	if (ret)
 		dev_warn(dev, "G15: PMP AGX vote release failed: %d\n", ret);
