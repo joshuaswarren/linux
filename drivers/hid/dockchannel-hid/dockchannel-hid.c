@@ -164,8 +164,15 @@ struct dchid_iface {
 	size_t hid_desc_len;
 
 	struct gpio_desc *gpio;
-	char gpio_name[MAX_GPIO_NAME];
-	int gpio_id;
+	/* The k114c MTP announces several GPIOs per interface (kiwi:
+	 * clock_24MHz_enable, display_sync, power, reset). Track them all;
+	 * gpio keeps the legacy single-GPIO semantics for existing paths. */
+#define MAX_IFACE_GPIOS 4
+	struct gpio_desc *gpios[MAX_IFACE_GPIOS];
+	char gpio_names[MAX_IFACE_GPIOS][MAX_GPIO_NAME];
+	int gpio_ids[MAX_IFACE_GPIOS];
+	int gpio_count;
+	bool gpios_requested;
 	bool gpio_announced;
 
 	struct mutex out_mutex;
@@ -608,30 +615,43 @@ static int dchid_request_gpio(struct dchid_iface *iface)
 	if (iface->firmware_managed_reset)
 		return -EINVAL;
 
-	if (iface->gpio)
+	int g;
+
+	if (iface->gpio_count && iface->gpios_requested)
+		return 0;
+	if (!iface->gpio_count && iface->gpio)
 		return 0;
 
-	dev_dbg(iface->dchid->dev, "Requesting GPIO %s#%d: %s\n",
-		iface->name, iface->gpio_id, iface->gpio_name);
+	for (g = 0; g < iface->gpio_count; g++) {
+		const char *name = iface->gpio_names[g];
 
-	/* A power method 2 interface holds its reset line from probe on. */
-	if (iface->power_method == DCHID_POWER_METHOD_2 &&
-	    !strcmp(iface->gpio_name, "afe-reset")) {
-		iface->gpio = iface->dchid->afe_reset;
-		return 0;
+		dev_dbg(iface->dchid->dev, "Requesting GPIO %s#%d: %s\n",
+			iface->name, iface->gpio_ids[g], name);
+
+		/* A power method 2 multi-touch holds its AFE reset line from
+		 * probe on; the pm2 transitions drive it, not this path. */
+		if (iface->power_method == DCHID_POWER_METHOD_2 &&
+		    !strcmp(name, "afe-reset")) {
+			if (g == 0)
+				iface->gpio = iface->dchid->afe_reset;
+			continue;
+		}
+
+		snprintf(prop_name, sizeof(prop_name), "apple,%s", name);
+		iface->gpios[g] = devm_gpiod_get_index(iface->dchid->dev, prop_name,
+						       0, GPIOD_OUT_LOW);
+		if (IS_ERR(iface->gpios[g])) {
+			ret = PTR_ERR(iface->gpios[g]);
+			iface->gpios[g] = NULL;
+			dev_err(iface->dchid->dev,
+				"Failed to request GPIO %s-gpios: %d\n",
+				prop_name, ret);
+			return ret;
+		}
+		if (g == 0)
+			iface->gpio = iface->gpios[g];
 	}
-
-	snprintf(prop_name, sizeof(prop_name), "apple,%s", iface->gpio_name);
-
-	iface->gpio = devm_gpiod_get_index(iface->dchid->dev, prop_name, 0, GPIOD_OUT_LOW);
-
-	if (IS_ERR(iface->gpio)) {
-		ret = PTR_ERR(iface->gpio);
-		iface->gpio = NULL;
-		dev_err(iface->dchid->dev, "Failed to request GPIO %s-gpios: %d\n",
-			prop_name, ret);
-		return ret;
-	}
+	iface->gpios_requested = 1;
 
 	return 0;
 }
@@ -1045,14 +1065,16 @@ static void dchid_handle_init(struct dockchannel_hid *dchid, void *data, size_t 
 				break;
 			}
 
-			if (iface->gpio_announced) {
+			if (iface->gpio_count >= MAX_IFACE_GPIOS) {
 				dev_err(dchid->dev,
-					"Cannot request more than one GPIO per interface!\n");
+					"Too many GPIO requests for %s\n", iface->name);
 				break;
 			}
 
-			strscpy(iface->gpio_name, req->name, MAX_GPIO_NAME);
-			iface->gpio_id = req->id;
+			strscpy(iface->gpio_names[iface->gpio_count], req->name,
+				MAX_GPIO_NAME);
+			iface->gpio_ids[iface->gpio_count] = req->id;
+			iface->gpio_count++;
 			iface->gpio_announced = true;
 			break;
 		}

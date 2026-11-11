@@ -110,10 +110,6 @@
 	status = "okay";
 };
 
-&pinctrl_nub {
-	status = "okay";
-};
-
 &mtp_hid {
 	/*
 	 * ADT multi-touch function-afe-reset = smc-pmu pKW8('pcIO', 0x10000,
@@ -127,20 +123,28 @@
 		apple,power-method = <2>;
 	};
 
-	/*
-	 * The touch-screen interface. ADT kiwi: image-tag fsat, power method 2.
-	 * Its firmware has the same HIDF container as the multi-touch one. Its
-	 * reset and power lines are NUB GPIO pins 25 and 26 (ADT function-reset
-	 * and function-power), not the shared multi-touch AFE reset. Pin 22 is
-	 * function-clock_24MHz_enable, the 24 MHz touch reference clock enable. Level 1
-	 * asserts the reset, as for the AFE one [INFERENCE].
-	 */
 	kiwi {
+		/* The k114c touchscreen half: digitizer TouchScreen (usage
+		 * 0x0d/0x04), rides the same dockchannel MTP as multi-touch
+		 * (macOS shows Transport FIFO, LocationID 172). The load path is
+		 * the generic CMD_SEND_FIRMWARE handshake, not a separate CBOR
+		 * bootloader: the blob is HIDF like the multi-touch one, and the
+		 * loader rewrites the interface byte at iface_offset. The image
+		 * is installed at /lib/firmware/apple/tpkiwifw-k114c.bin.
+		 *
+		 * ADT kiwi functions (all on OIPG, the AP pinctrl): reset gpio
+		 * 25 (01 00 01 00), power gpio 26 (01 01 00 00),
+		 * clock_24MHz_enable gpio 22 (01 01 00 02), display_sync gpio 11
+		 * (01 01 00 02). Polarity assumed active high; the boot logs
+		 * confirm. The clock-source pmgr gate (ADT phandle 0x1ed CRST)
+		 * has no measured pmgr offset yet; the kernelcache pull decides
+		 * whether kiwi also needs its power domain tied here. */
 		firmware-name = "apple/tpkiwifw-k114c.bin";
 		apple,power-method = <2>;
-		apple,reset-gpios = <&pinctrl_nub 25 GPIO_ACTIVE_HIGH>;
-		apple,power-gpios = <&pinctrl_nub 26 GPIO_ACTIVE_HIGH>;
-		apple,clock-gpios = <&pinctrl_nub 22 GPIO_ACTIVE_HIGH>;
+		apple,reset-gpios = <&pinctrl_ap 25 GPIO_ACTIVE_HIGH>;
+		apple,power-gpios = <&pinctrl_ap 26 GPIO_ACTIVE_HIGH>;
+		apple,clock_24MHz_enable-gpios = <&pinctrl_ap 22 GPIO_ACTIVE_HIGH>;
+		apple,display_sync-gpios = <&pinctrl_ap 11 GPIO_ACTIVE_HIGH>;
 	};
 
 	keyboard: keyboard {
