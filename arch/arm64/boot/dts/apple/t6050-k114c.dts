@@ -39,7 +39,7 @@
 #include "t6050-smc.dtsi"
 #include "t6050-gpu.dtsi"
 #include "t6050-pmp.dtsi"
-#include "t6050-j714c-pmp-tunables.dtsi"
+#include "t6050-k114c-pmp-tunables.dtsi"
 
 /* GPU bring-up (Main 15:49 CST): enable the GPU and its mailboxes. The
  * UAT reserved-memory nodes are defined in t6050-gpu.dtsi with zero
@@ -67,6 +67,17 @@
  * gates (0x1b 0x1c = ps_pmp + ps_pms_sram) are always-on, and the
  * binding takes one power-domains entry, so no override here. */
 
+
+/* K114c PMP board values (live ioreg of this machine under macOS,
+ * IODeviceTree.txt): /chosen board-id 0x4 (line 61) and dram-vendor-id
+ * 0x1 (line 187). The firmware UUID is the J714c one (line 7821). The
+ * pmp-fw page stays the shared t6050-pmp.dtsi value, the one proven on
+ * the Linux boot path: the page moves with the boot path (macOS 0x10001eb8000
+ * in the nub segment-ranges, line 7903). */
+&pmp {
+	apple,board-id = <0x4>;
+	apple,dram-vendor-id = <0x1>;
+};
 
 / {
 	compatible = "apple,k114c", "apple,t6050", "apple,arm-platform";
