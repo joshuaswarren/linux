@@ -164,6 +164,19 @@
 			apple,no-ack;
 		};
 
+		/* The ANE's vote (soc-device 0x11, K114c/M5): gate 664
+		 * ANE_SYS_V is notify_pmp like the GPU fabric planes, so the
+		 * ANE votes through its own report entry behind ps_ane_sys.
+		 * Consumers attach with power-domains = <&pmp_report_ane_sys>. */
+		pmp_report_ane_sys: report@10 {
+			compatible = "apple,t6050-pmp-v2-report-entry",
+				     "apple,t6000-pmp-v2-report-entry";
+			reg = <0x10>;
+			label = "pmp-ane-sys";
+			#power-domain-cells = <0>;
+			power-domains = <&ps_ane_sys>;
+		};
+
 		/* The GPU's vote, behind the gfx power state. */
 		pmp_report_gfx: report@f {
 			compatible = "apple,t6050-pmp-v2-report-entry",
