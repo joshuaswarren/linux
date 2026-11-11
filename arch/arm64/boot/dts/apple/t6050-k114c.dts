@@ -105,3 +105,38 @@
 };
 
 #include "t6050-k114c-gpu.dtsi"
+
+/*
+ * The touchscreen (kiwi). Its reset and supply are NUB GPIO pins 25 and 26 (ADT
+ * function-reset and function-power), not the shared multi-touch AFE reset.
+ * The NUB GPIO block is always on and used without interrupts. Level 1 asserts
+ * the reset, as for the AFE one [INFERENCE].
+ */
+&pmgr0 {
+	ps_nub_gpio: power-controller@88 {
+		compatible = "apple,t6050-pmgr-pwrstate", "apple,t8103-pmgr-pwrstate";
+		reg = <0x88 4>;
+		label = "nub_gpio";
+		#power-domain-cells = <0>;
+		#reset-cells = <0>;
+		apple,always-on;
+	};
+};
+
+&nub_gpio0 {
+	/delete-property/ interrupts;
+	power-domains = <&ps_nub_gpio>;
+	gpio-controller;
+	#gpio-cells = <2>;
+	gpio-ranges = <&nub_gpio0 0 0 61>;
+	apple,npins = <61>;
+	status = "okay";
+};
+
+&kiwi {
+	firmware-name = "apple/tpkiwifw-k114c.bin";
+	apple,power-method = <2>;
+	apple,reset-gpios = <&nub_gpio0 25 GPIO_ACTIVE_HIGH>;
+	apple,power-gpios = <&nub_gpio0 26 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+};
