@@ -244,6 +244,22 @@
 &usb4_3_acio {
 	apple,pcie-tunnel = <&usb4_3_pcie_tunnel>;
 };
+
+&apciec0 {
+	apple,pciec-kernel-init;
+};
+
+&apciec1 {
+	apple,pciec-kernel-init;
+};
+
+&apciec2 {
+	apple,pciec-kernel-init;
+};
+
+&apciec3 {
+	apple,pciec-kernel-init;
+};
 #endif
 
 &hpm0 {
