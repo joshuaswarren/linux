@@ -178,7 +178,10 @@
 			phandle = <0xa1>;
 			label = "pmp-ane-sys";
 			#power-domain-cells = <0>;
-			power-domains = <&ps_ane_sys>;
+			/* ADT hangs ANE_SYS_V under ANE_CPU: voting with ane_sys
+			 * alone leaves ANE_CPU off - the same gap afr showed for
+			 * the GPU. The entry parents to ps_ane_cpu. */
+			power-domains = <&ps_ane_cpu>;
 		};
 
 		/* The GPU's vote. It is ps_gfx's parent, so genpd sends it before
