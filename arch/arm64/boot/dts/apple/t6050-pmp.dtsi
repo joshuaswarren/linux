@@ -172,6 +172,10 @@
 			compatible = "apple,t6050-pmp-v2-report-entry",
 				     "apple,t6000-pmp-v2-report-entry";
 			reg = <0x10>;
+			/* Explicit phandle: overlay consumers (the ANE diagnostic
+			 * DTBO) reference this node numerically because the live
+			 * FDT carries no __symbols__. Next free value after 0xa0. */
+			phandle = <0xa1>;
 			label = "pmp-ane-sys";
 			#power-domain-cells = <0>;
 			power-domains = <&ps_ane_sys>;
