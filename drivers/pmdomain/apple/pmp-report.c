@@ -1434,6 +1434,7 @@ static int apple_pmp_report_entry_probe(struct platform_device *pdev)
 		apple_pmp_report_entry_set_state(&ent->genpd, true);
 	}
 
+	ent->genpd.flags |= GENPD_FLAG_IRQ_SAFE;
 	ent->genpd.power_on = apple_pmp_report_entry_power_on;
 	ent->genpd.power_off = apple_pmp_report_entry_power_off;
 
