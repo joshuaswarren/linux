@@ -69,6 +69,7 @@
 		apple,pmc = <1>;
 		apple,pmc-pmgr = <0x3f>;
 		apple,soc-chip-variant = <1>;
+		apple,pmp-report = <&pmp_report>;
 		/* Asked for by the firmware but not in the ADT nub: values from macOS's
 		 * ApplePMPv2 (ioreg). macOS has no pmc-max-bwr-latency-us either. */
 		apple,tunable-ane-af-bw-dvfs-filter = [ff ff ff ff];
