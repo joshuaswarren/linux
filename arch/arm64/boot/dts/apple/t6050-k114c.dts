@@ -15,8 +15,9 @@
  *   runs on the simple framebuffer the loader fills, and the K114c's OLED
  *   panel and DCP firmware segment table have not been measured, so there
  *   is no K114c display dtsi to include;
- * - the GPU (gfx/gfx1 mbox, gpu): not needed to boot; Edi's loader-side
- *   ADT validation (dt_set_gpu_g17) is not exercised here either;
+ * - the GPU (gfx/gfx1 mbox, gpu): enabled here for the K114c GPU bring-up
+ *   (Main 15:49 CST); the loader-side ADT validation (dt_set_gpu_g17) must
+ *   pass on this machine or the boot firmware disables the nodes again;
  * - the PMP (t6050-pmp.dtsi and his pmp-tunables): not needed to boot, and
  *   this K114c's ADT has no pmp device node at all;
  * - the camera and ISP (his t6050-j714c-isp.dtsi): no K114c camera values
@@ -34,6 +35,24 @@
 
 #include "t6050.dtsi"
 #include "t6050-smc.dtsi"
+#include "t6050-gpu.dtsi"
+
+/* GPU bring-up (Main 15:49 CST): enable the GPU and its mailboxes. The
+ * UAT reserved-memory nodes are defined in t6050-gpu.dtsi with zero
+ * addresses; the loader (dt_set_gpu_g17) fills them from the ADT at
+ * boot. If it does not, the driver logs "failed to reserve memory for
+ * node uat-*" and the GPU stays down. */
+&gfx_mbox {
+	status = "okay";
+};
+
+&gfx1_mbox {
+	status = "okay";
+};
+
+&gpu {
+	status = "okay";
+};
 
 / {
 	compatible = "apple,k114c", "apple,t6050", "apple,arm-platform";
