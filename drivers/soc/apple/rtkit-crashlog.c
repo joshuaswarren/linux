@@ -13,6 +13,24 @@
 #define APPLE_RTKIT_CRASHLOG_MBOX FOURCC('C', 'm', 'b', 'x')
 #define APPLE_RTKIT_CRASHLOG_TIME FOURCC('C', 't', 'i', 'm')
 #define APPLE_RTKIT_CRASHLOG_REGS FOURCC('C', 'r', 'g', '8')
+#define APPLE_RTKIT_CRASHLOG_CORE_STATE FOURCC('C', 's', 't', 'a')
+#define APPLE_RTKIT_CRASHLOG_STACK FOURCC('C', 'c', 's', 't')
+#define APPLE_RTKIT_CRASHLOG_RTKIT FOURCC('C', 'r', 't', 'k')
+#define APPLE_RTKIT_CRASHLOG_CCDP FOURCC('C', 'c', 'd', 'p')
+#define APPLE_RTKIT_CRASHLOG_CPCT FOURCC('C', 'p', 'c', 't')
+
+/*
+ * Saved core context of the interrupted thread (PMP firmware, t6050).
+ * Offsets follow the firmware exception dispatcher context layout:
+ * pc at +0x100, far at +0x328, esr (u32) at +0x338. The esr is checked
+ * against the esr the Crg8 section dumped; on mismatch only the values
+ * print with a layout-unverified tag.
+ */
+#define CSTA_PC_OFF 0x100
+#define CSTA_FAR_OFF 0x328
+#define CSTA_ESR_OFF 0x338
+
+static u64 last_dumped_esr;
 
 /* For COMPILE_TEST on non-ARM64 architectures */
 #ifndef PSR_MODE_EL0t
@@ -126,6 +144,7 @@ static void apple_rtkit_crashlog_dump_regs(struct apple_rtkit *rtk, u8 *bfr,
 	}
 
 	regs = (struct apple_rtkit_crashlog_regs *)bfr;
+	last_dumped_esr = regs->esr;
 
 	switch (regs->psr & PSR_MODE_MASK) {
 	case PSR_MODE_EL0t:
@@ -171,6 +190,67 @@ static void apple_rtkit_crashlog_dump_regs(struct apple_rtkit *rtk, u8 *bfr,
 	}
 
 	dev_warn(rtk->dev, "\n");
+}
+
+static void apple_rtkit_crashlog_dump_hexwords(struct apple_rtkit *rtk,
+					       u8 *bfr, size_t size)
+{
+	size_t i;
+	u64 v;
+
+	for (i = 0; i + 8 <= size; i += 8) {
+		memcpy(&v, bfr + i, 8);
+		dev_warn(rtk->dev, "RTKit:   +%03zx = %016llx", i, v);
+	}
+}
+
+static void apple_rtkit_crashlog_dump_core_state(struct apple_rtkit *rtk,
+						 u8 *bfr, size_t size)
+{
+	u32 version, esr = 0;
+	u64 pc = 0, far = 0;
+
+	if (size < 4) {
+		dev_warn(rtk->dev, "RTKit: Csta section too small: 0x%zx",
+			 size);
+		return;
+	}
+
+	memcpy(&version, bfr, 4);
+	if (size >= 4 + CSTA_ESR_OFF + 4) {
+		memcpy(&pc, bfr + 4 + CSTA_PC_OFF, 8);
+		memcpy(&far, bfr + 4 + CSTA_FAR_OFF, 8);
+		memcpy(&esr, bfr + 4 + CSTA_ESR_OFF, 4);
+	}
+
+	if (esr == last_dumped_esr && esr)
+		dev_warn(rtk->dev,
+			 "RTKit: Interrupted context: ELR = 0x%llx FAR = 0x%llx (ESR 0x%x matches dump)",
+			 pc, far, esr);
+	else
+		dev_warn(rtk->dev,
+			 "RTKit: Interrupted context (layout unverified, ESR 0x%x != dump 0x%llx): ELR = 0x%llx FAR = 0x%llx",
+			 esr, last_dumped_esr, pc, far);
+
+	apple_rtkit_crashlog_dump_hexwords(rtk, bfr + 4, size - 4);
+}
+
+static void apple_rtkit_crashlog_dump_stack(struct apple_rtkit *rtk,
+					    u8 *bfr, size_t size)
+{
+	u32 idx, flags;
+
+	if (size < 8) {
+		dev_warn(rtk->dev, "RTKit: Ccst section too small: 0x%zx",
+			 size);
+		return;
+	}
+
+	memcpy(&idx, bfr, 4);
+	memcpy(&flags, bfr + 4, 4);
+	dev_warn(rtk->dev, "RTKit: Crashed stack (thread=%u flags=%x):",
+		 idx, flags);
+	apple_rtkit_crashlog_dump_hexwords(rtk, bfr + 8, size - 8);
 }
 
 void apple_rtkit_crashlog_dump(struct apple_rtkit *rtk, u8 *bfr, size_t size)
@@ -222,6 +302,22 @@ void apple_rtkit_crashlog_dump(struct apple_rtkit *rtk, u8 *bfr, size_t size)
 		case APPLE_RTKIT_CRASHLOG_REGS:
 			apple_rtkit_crashlog_dump_regs(rtk, bfr + offset + 16,
 						       section_size);
+			break;
+		case APPLE_RTKIT_CRASHLOG_CORE_STATE:
+			apple_rtkit_crashlog_dump_core_state(
+				rtk, bfr + offset + 16, section_size);
+			break;
+		case APPLE_RTKIT_CRASHLOG_STACK:
+			apple_rtkit_crashlog_dump_stack(rtk, bfr + offset + 16,
+							section_size);
+			break;
+		case APPLE_RTKIT_CRASHLOG_RTKIT:
+		case APPLE_RTKIT_CRASHLOG_CCDP:
+		case APPLE_RTKIT_CRASHLOG_CPCT:
+			dev_warn(rtk->dev, "RTKit: State section (size=0x%x):",
+				 section_size);
+			apple_rtkit_crashlog_dump_hexwords(rtk, bfr + offset + 16,
+							   section_size);
 			break;
 		default:
 			dev_warn(rtk->dev,
