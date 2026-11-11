@@ -447,6 +447,9 @@
 /* External displays, on the left-front and right ports */
 #include "t6050-j714s-display.dtsi"
 
+/* The Neural Engine, started only after the boot loader's preload hand-off */
+#include "t6050-j714s-ane.dtsi"
+
 /*
  * The speakers and the headphone jack are not brought up: ADT i2c1 has the left
  * sn012776 amplifiers and i2c2 the cs42l84 codec, so both buses stay off. The
