@@ -131,7 +131,8 @@
 	 * The touch-screen interface. ADT kiwi: image-tag fsat, power method 2.
 	 * Its firmware has the same HIDF container as the multi-touch one. Its
 	 * reset and power lines are NUB GPIO pins 25 and 26 (ADT function-reset
-	 * and function-power), not the shared multi-touch AFE reset. Level 1
+	 * and function-power), not the shared multi-touch AFE reset. Pin 22 is
+	 * function-clock_24MHz_enable, the 24 MHz touch reference clock enable. Level 1
 	 * asserts the reset, as for the AFE one [INFERENCE].
 	 */
 	kiwi {
@@ -139,6 +140,7 @@
 		apple,power-method = <2>;
 		apple,reset-gpios = <&pinctrl_nub 25 GPIO_ACTIVE_HIGH>;
 		apple,power-gpios = <&pinctrl_nub 26 GPIO_ACTIVE_HIGH>;
+		apple,clock-gpios = <&pinctrl_nub 22 GPIO_ACTIVE_HIGH>;
 	};
 
 	keyboard: keyboard {

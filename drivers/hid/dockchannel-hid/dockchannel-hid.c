@@ -183,6 +183,7 @@ struct dchid_iface {
 	/* Power method 2: the line that resets this interface, and its optional supply. */
 	struct gpio_desc *reset;
 	struct gpio_desc *power;
+	struct gpio_desc *clock;
 };
 
 struct dockchannel_hid {
@@ -225,7 +226,7 @@ dchid_get_interface(struct dockchannel_hid *dchid, int index, const char *name)
 	u32 power_method = DCHID_POWER_METHOD_1;
 	bool firmware_managed_reset = false;
 	struct device_node *of_node = NULL;
-	struct gpio_desc *reset = NULL, *power = NULL;
+	struct gpio_desc *reset = NULL, *power = NULL, *clock = NULL;
 	struct dchid_iface *iface;
 
 	if (READ_ONCE(dchid->stopping))
@@ -290,6 +291,16 @@ dchid_get_interface(struct dockchannel_hid *dchid, int index, const char *name)
 				}
 				power = NULL;
 			}
+
+			clock = devm_fwnode_gpiod_get(dchid->dev, fwnode, "apple,clock",
+						      GPIOD_OUT_HIGH, "dchid-clock");
+			if (IS_ERR(clock)) {
+				if (PTR_ERR(clock) != -ENOENT) {
+					dev_err(dchid->dev, "Clock line of %s: %pe\n", name, clock);
+					goto err_put_node;
+				}
+				clock = NULL;
+			}
 		}
 	}
 
@@ -307,6 +318,7 @@ dchid_get_interface(struct dockchannel_hid *dchid, int index, const char *name)
 	iface->firmware_managed_reset = firmware_managed_reset;
 	iface->reset = reset;
 	iface->power = power;
+	iface->clock = clock;
 	iface->out_report = -1;
 	init_completion(&iface->out_complete);
 	init_completion(&iface->ready);
@@ -487,6 +499,9 @@ static int dchid_pm2_set_power(struct dchid_iface *iface, u8 state)
 	} else {
 		if (state == DCHID_POWER_STATE_ON && iface->power)
 			gpiod_set_value_cansleep(iface->power, 1);
+		if (iface->clock)
+			gpiod_set_value_cansleep(iface->clock,
+						 state == DCHID_POWER_STATE_ON);
 		ret = gpiod_set_value_cansleep(iface->reset,
 					       state == DCHID_POWER_STATE_OFF);
 		if (ret < 0)
