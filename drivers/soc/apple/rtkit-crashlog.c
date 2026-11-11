@@ -118,6 +118,11 @@ static void apple_rtkit_crashlog_dump_mailbox(struct apple_rtkit *rtk, u8 *bfr,
 	size_t n_messages;
 	struct apple_rtkit_crashlog_mbox_entry entry;
 
+	if (size < 28) {
+		dev_warn(rtk->dev, "RTKit: Mailbox section too small: 0x%zx", size);
+		return;
+	}
+
 	memcpy(&type, bfr + 16, 4);
 	memcpy(&index, bfr + 24, 4);
 	n_messages = (size - 28) / sizeof(entry);
