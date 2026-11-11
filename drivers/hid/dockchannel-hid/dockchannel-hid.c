@@ -634,6 +634,7 @@ static int dchid_request_gpio(struct dchid_iface *iface)
 		    !strcmp(name, "afe-reset")) {
 			if (g == 0)
 				iface->gpio = iface->dchid->afe_reset;
+			iface->gpios[g] = iface->dchid->afe_reset;
 			continue;
 		}
 
