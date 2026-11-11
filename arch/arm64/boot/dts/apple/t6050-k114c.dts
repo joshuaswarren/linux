@@ -69,6 +69,21 @@
 	power-domains = <&ps_pmp>, <&ps_pms_sram>;
 };
 
+/* The ANE's vote (soc-device 0x11, Main 23:35 CST): gate 664 ANE_SYS_V is
+ * notify_pmp like the GPU's b2bd planes, so the ANE votes through the PMP
+ * report entry behind ps_ane_sys. Consumers attach with
+ * power-domains = <&pmp_report_ane> on their node. */
+&pmp_report {
+	pmp_report_ane: report@10 {
+		compatible = "apple,t6050-pmp-v2-report-entry",
+			     "apple,t6000-pmp-v2-report-entry";
+		reg = <0x10>;
+		label = "pmp-ane";
+		#power-domain-cells = <0>;
+		power-domains = <&ps_ane_sys>;
+	};
+};
+
 / {
 	compatible = "apple,k114c", "apple,t6050", "apple,arm-platform";
 	model = "Apple MacBook Pro (14-inch, M5 Max, 18 CPU cores, OLED)";
