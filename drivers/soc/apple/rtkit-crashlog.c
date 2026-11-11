@@ -256,7 +256,7 @@ static void apple_rtkit_crashlog_dump_stack(struct apple_rtkit *rtk,
 void apple_rtkit_crashlog_dump(struct apple_rtkit *rtk, u8 *bfr, size_t size)
 {
 	size_t offset;
-	u32 section_fourcc, section_size;
+	u32 section_fourcc, section_size, payload;
 	struct apple_rtkit_crashlog_header header;
 
 	memcpy(&header, bfr, sizeof(header));
@@ -276,8 +276,21 @@ void apple_rtkit_crashlog_dump(struct apple_rtkit *rtk, u8 *bfr, size_t size)
 	offset = sizeof(header);
 
 	while (offset < size) {
+		if (size - offset < 16) {
+			dev_warn(rtk->dev, "RTKit: Truncated crashlog section header at 0x%zx",
+				 offset);
+			return;
+		}
 		memcpy(&section_fourcc, bfr + offset, 4);
 		memcpy(&section_size, bfr + offset + 12, 4);
+		/* The size covers the 16 byte section header; handlers get the payload. */
+		if (section_size < 16 || section_size > size - offset) {
+			dev_warn(rtk->dev,
+				 "RTKit: Bad crashlog section %x size 0x%x at 0x%zx",
+				 section_fourcc, section_size, offset);
+			return;
+		}
+		payload = section_size - 16;
 
 		switch (section_fourcc) {
 		case APPLE_RTKIT_CRASHLOG_HEADER_FOURCC:
@@ -285,39 +298,39 @@ void apple_rtkit_crashlog_dump(struct apple_rtkit *rtk, u8 *bfr, size_t size)
 			return;
 		case APPLE_RTKIT_CRASHLOG_STR:
 			apple_rtkit_crashlog_dump_str(rtk, bfr + offset + 16,
-						      section_size);
+						      payload);
 			break;
 		case APPLE_RTKIT_CRASHLOG_VERSION:
 			apple_rtkit_crashlog_dump_version(
-				rtk, bfr + offset + 16, section_size);
+				rtk, bfr + offset + 16, payload);
 			break;
 		case APPLE_RTKIT_CRASHLOG_MBOX:
 			apple_rtkit_crashlog_dump_mailbox(
-				rtk, bfr + offset + 16, section_size);
+				rtk, bfr + offset + 16, payload);
 			break;
 		case APPLE_RTKIT_CRASHLOG_TIME:
 			apple_rtkit_crashlog_dump_time(rtk, bfr + offset + 16,
-						       section_size);
+						       payload);
 			break;
 		case APPLE_RTKIT_CRASHLOG_REGS:
 			apple_rtkit_crashlog_dump_regs(rtk, bfr + offset + 16,
-						       section_size);
+						       payload);
 			break;
 		case APPLE_RTKIT_CRASHLOG_CORE_STATE:
 			apple_rtkit_crashlog_dump_core_state(
-				rtk, bfr + offset + 16, section_size);
+				rtk, bfr + offset + 16, payload);
 			break;
 		case APPLE_RTKIT_CRASHLOG_STACK:
 			apple_rtkit_crashlog_dump_stack(rtk, bfr + offset + 16,
-							section_size);
+							payload);
 			break;
 		case APPLE_RTKIT_CRASHLOG_RTKIT:
 		case APPLE_RTKIT_CRASHLOG_CCDP:
 		case APPLE_RTKIT_CRASHLOG_CPCT:
 			dev_warn(rtk->dev, "RTKit: State section (size=0x%x):",
-				 section_size);
+				 payload);
 			apple_rtkit_crashlog_dump_hexwords(rtk, bfr + offset + 16,
-							   section_size);
+							   payload);
 			break;
 		default:
 			dev_warn(rtk->dev,
