@@ -145,6 +145,8 @@ struct apple_rtkit {
 	 * read once the co-processor has written it. */
 	struct delayed_work crashlog_late_work;
 	unsigned int crashlog_late_polls;
+	/* ESR of the last crashlog register dump, to tell a matching Csta apart. */
+	u64 last_dumped_esr;
 
 	struct workqueue_struct *wq;
 };
