@@ -7,21 +7,21 @@
  * data 0x1000292c000 size 0x13d0000, the J716c sizes. UNMEASURED: presets, light.
  */
 /*
- * Static firmware placement, MEASURED from the macOS ioreg isp0 segment-ranges
- * (iBoot loads them; same iBoot as the boot set): text 0x100011f4000 size
- * 0xc1c000, data 0x1000292c000 size 0x13d0000, main memory 32 MiB at IOVA
- * 0x100_0000_0000. No "isp" alias: no loader change, the loader leaves the
- * node as it is. The addresses move with iBoot; re-read them after an update.
+ * Static firmware placement, from the live K114c ADT isp0 segment-ranges (iBoot loads them):
+ * text 0x10001228000 size 0xc1c000, data 0x10002930000 size 0x13d0000, main memory 32 MiB at IOVA
+ * 0x100_0000_0000 (the macOS ioreg values, text 0x100011f4000 and data 0x1000292c000, were stale).
+ * No "isp" alias: no loader change, the loader leaves the node as it is. The addresses move with
+ * iBoot; re-read them after an update.
  */
 &{/reserved-memory} {
-	isp_fw_text: isp-firmware-text@100011f4000 {
-		reg = <0x100 0x011f4000 0x0 0xc1c000>;
+	isp_fw_text: isp-firmware-text@10001228000 {
+		reg = <0x100 0x01228000 0x0 0xc1c000>;
 		iommu-addresses = <&isp0 0x100 0x0 0x0 0xc1c000>;
 		no-map;
 	};
 
-	isp_fw_data: isp-firmware-data@1000292c000 {
-		reg = <0x100 0x0292c000 0x0 0x13d0000>;
+	isp_fw_data: isp-firmware-data@10002930000 {
+		reg = <0x100 0x02930000 0x0 0x13d0000>;
 		iommu-addresses = <&isp0 0x100 0xc1c000 0x0 0x13d0000>;
 		no-map;
 	};

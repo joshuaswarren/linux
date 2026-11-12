@@ -28,6 +28,7 @@
 		/* kboot fills the N1's factory addresses from /chosen through these */
 		wifi0 = &n1_alpha;
 		bluetooth0 = &n1_beta;
+		sep = &sep;
 	};
 };
 
@@ -494,7 +495,7 @@
 
 		connector {
 			compatible = "usb-c-connector";
-			label = "USB-C Left Front";
+			label = "USB-C Left-front";
 			power-role = "dual";
 			data-role = "dual";
 
@@ -686,6 +687,28 @@
 		interrupt-parent = <&pinctrl_ap>;
 		interrupts = <138 IRQ_TYPE_EDGE_RISING>;
 		/* Per-device factory data from this Mac's own iBoot system container */
-		firmware-name = "apple/mesacal-k114c.bin", "apple/msrk-k114c.bin";
+		firmware-name = "apple/mesacal-k114c.bin";
 	};
+};
+
+/*
+ * The SEP runs from iBoot: its mailbox and the fabric domains above it stay firmware-owned, so
+ * Linux never gates them, and are enabled for apple_sep.
+ */
+&ps_fab0_piogw {
+	apple,firmware-owned;
+	status = "okay";
+};
+
+&ps_fab8_soc {
+	apple,firmware-owned;
+	status = "okay";
+};
+
+&ps_sep {
+	status = "okay";
+};
+
+&sep_mbox {
+	status = "okay";
 };
