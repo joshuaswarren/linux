@@ -734,3 +734,5 @@
 &sep_mbox {
 	status = "okay";
 };
+
+#include "t6050-k114c-display.dtsi"
