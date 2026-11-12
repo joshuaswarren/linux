@@ -760,6 +760,20 @@ impl AFKEndpoint {
         data: &[u8],
     ) -> Result<()> {
         let subtype = ehdr.subtype;
+        if self.index == 0x22 {
+            let entry_type = qhdr.ty;
+            let entry_len = qhdr.size;
+            let channel = qhdr.channel;
+            dev_info!(
+                client.dev,
+                "AOP ep 0x22 packet: entry_type={:#x} len={} channel={:#x} category={:#x} subtype={:#x}",
+                entry_type,
+                entry_len,
+                channel,
+                ehdr.category,
+                ehdr.subtype
+            );
+        }
         if ehdr.category == EPIC_CATEGORY_REPORT {
             if subtype == EPIC_SUBTYPE_STD_SERVICE {
                 if data.len() < EPIC_ANNOUNCE_LEN {
@@ -1450,7 +1464,14 @@ impl AopData {
             let rtk_ep_num = AFK_ENDPOINT_START + ep as u8;
             let mut guard = self.rtkit.lock();
             let mut rtk = guard.as_mut().as_pin_mut().ok_or(ENODEV)?;
-            if !rtk.as_mut().has_endpoint(rtk_ep_num) {
+            let present = rtk.as_mut().has_endpoint(rtk_ep_num);
+            dev_info!(
+                self.dev,
+                "RTKit endpoint map: ep={:#04x} {}",
+                rtk_ep_num,
+                if present { "present" } else { "absent" }
+            );
+            if !present {
                 continue;
             }
             let required =
@@ -2243,6 +2264,7 @@ impl AopData {
                 SETUP_TYPE_EPMAP => {
                     // Each fragment of the endpoint map is acknowledged by
                     // echoing it.
+                    dev_info!(self.dev, "setup port EPMAP from firmware: {:#018x}", word);
                     st.send(SETUP_MGMT_EP, word)?;
                     if st.epmap_endpoints {
                         // RTKit layout: a 32-endpoint bitmap, its base in
@@ -2326,6 +2348,13 @@ impl AopData {
             return Err(EINVAL);
         }
         let rx_pages = (requested * SETUP_BUFFER_ENTRY_SIZE).div_ceil(SETUP_PAGE);
+        dev_info!(
+            self.dev,
+            "setup port buffer request: ep={:#04x} entries={:#x} tx_pages=1 rx_pages={}",
+            ep,
+            requested,
+            rx_pages
+        );
         if st.next_page + 1 + rx_pages > SETUP_ARENA_PAGES {
             return Err(ENOMEM);
         }
@@ -2592,6 +2621,9 @@ impl rtkit::Operations for AopData {
     type Buffer = NoBuffer;
 
     fn recv_message(data: <Self::Data as ForeignOwnable>::Borrowed<'_>, ep: u8, msg: u64) {
+        if ep == 0x22 {
+            dev_info!(data.dev, "AOP ep 0x22 RTKit opcode={:#x}", msg >> 48);
+        }
         let Some(index) = afk_endpoint_index(ep) else {
             dev_warn!(
                 data.dev,
