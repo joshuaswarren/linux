@@ -701,6 +701,7 @@ static void iomfb_callback_work(struct work_struct *work)
 }
 
 static void iomfb_keepalive_work(struct work_struct *work);
+static void iomfb_edr_tick(struct work_struct *work);
 
 void iomfb_queue_init(struct apple_dcp *dcp)
 {
@@ -715,6 +716,7 @@ void iomfb_queue_init(struct apple_dcp *dcp)
 	INIT_DELAYED_WORK(&dcp->iomfb.timeout, iomfb_queue_timeout);
 	INIT_DELAYED_WORK(&dcp->iomfb.backlight_retry, iomfb_backlight_retry);
 	INIT_DELAYED_WORK(&dcp->iomfb.keepalive, iomfb_keepalive_work);
+	INIT_DELAYED_WORK(&dcp->iomfb.edr_tick, iomfb_edr_tick);
 	atomic_set(&dcp->iomfb.opaque_x_state, IOMFB_OPAQUE_X_WAITING);
 }
 
@@ -739,6 +741,7 @@ void iomfb_queue_stop(struct apple_dcp *dcp)
 	cancel_delayed_work_sync(&dcp->iomfb.timeout);
 	cancel_delayed_work_sync(&dcp->iomfb.backlight_retry);
 	cancel_delayed_work_sync(&dcp->iomfb.keepalive);
+	cancel_delayed_work_sync(&dcp->iomfb.edr_tick);
 }
 
 /*
@@ -3674,7 +3677,8 @@ static bool iomfb_scanout_presentable(struct apple_dcp *dcp)
 static void iomfb_backlight_start(struct apple_dcp *dcp,
 				  struct iomfb_transaction *transaction)
 {
-	if (!dcp_backlight_pending(dcp) || !iomfb_scanout_presentable(dcp))
+	if ((!dcp_backlight_pending(dcp) && !READ_ONCE(dcp->edr_ramping)) ||
+	    !iomfb_scanout_presentable(dcp))
 		return;
 
 	dcp->swap.h17p = dcp->iomfb.scanout->request;
@@ -3732,6 +3736,21 @@ static void iomfb_keepalive_work(struct work_struct *work)
 	transaction->presentation = true;
 	if (iomfb_queue(dcp, transaction))
 		kfree(transaction);
+}
+
+/*
+ * A firmware 27 panel's EDR ramp short of its target with no frame for a
+ * while: present the frame again, brightness only, and its swap takes the
+ * next step (dcp_edr_prepare_v27()).  A compositor that presents a still
+ * HDR frame once reaches the full headroom as on macOS.
+ */
+static void iomfb_edr_tick(struct work_struct *work)
+{
+	struct apple_dcp *dcp = container_of(to_delayed_work(work), struct apple_dcp,
+					  iomfb.edr_tick);
+
+	if (READ_ONCE(dcp->edr_ramping))
+		iomfb_backlight_kick(dcp);
 }
 
 int iomfb_configure_backlight_h17p(struct apple_dcp *dcp, u32 maximum,

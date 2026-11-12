@@ -679,6 +679,9 @@ struct apple_dcp {
 	u32 edr_hm;
 	u32 edr_sdr;
 	bool edr_restart;
+	/* Firmware 27: when the headroom last moved, and short of its target. */
+	ktime_t edr_step;
+	bool edr_ramping;
 	struct dcp_set_digital_out_mode_req mode;
 	/* Pixel clock (kHz) of @mode; the firmware asks for its video clock. */
 	u32 mode_clock_khz;
@@ -916,6 +919,8 @@ struct apple_dcp {
 		/* Last frame publish times, oldest first (dcp_band_hold_ns()). */
 		spinlock_t frame_lock;
 		u64 frame_ns[DCP_BAND_FRAMES];
+		/* A firmware 27 panel's EDR ramp on a still frame (iomfb_edr_tick()) */
+		struct delayed_work edr_tick;
 		unsigned long deadline;
 		unsigned int queued;
 		bool stopped;
