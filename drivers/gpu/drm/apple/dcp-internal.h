@@ -1029,6 +1029,7 @@ void iomfb_present_failed_h17p(struct apple_dcp *dcp);
 bool iomfb_retire_dropped_present_h17p(struct apple_dcp *dcp);
 void iomfb_retire_unplugged_present_h17p(struct apple_dcp *dcp);
 void dcp_external_wedged(struct apple_dcp *dcp);
+bool iomfb_present_has_surface_h17p(const struct dcp_swap_submit_req_h17p *request);
 bool iomfb_apply_backlight_h17p(struct apple_dcp *dcp,
 				const struct dcp_swap_submit_req_h17p *request,
 				struct dcp_present_h17p *wire);
