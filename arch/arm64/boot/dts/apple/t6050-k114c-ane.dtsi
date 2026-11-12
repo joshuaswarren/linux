@@ -1,0 +1,14 @@
+/* The K114c Neural Engine, as on the J714s: the preload placeholders and the
+ * engine, its three DARTs and ANE_SYS, plus the fabric parents ANE_SYS needs
+ * (ps_fab9_soc is already enabled with the ISP). */
+#include "t6050-j714s-ane.dtsi"
+
+&ps_fab8_soc {
+	apple,firmware-owned;
+	status = "okay";
+};
+
+&ps_fab0_piogw {
+	apple,firmware-owned;
+	status = "okay";
+};
