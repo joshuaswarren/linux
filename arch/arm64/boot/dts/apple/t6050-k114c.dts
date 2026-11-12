@@ -23,6 +23,28 @@
 #define T6050_K114C
 #include "t6050-peripherals.dtsi"
 
+/* SMC sensors, following the T6050 fan and power channels from J714s. */
+#include "hwmon-common.dtsi"
+#include "hwmon-fan-dual.dtsi"
+#include "hwmon-laptop.dtsi"
+
+&smc_hwmon {
+	status = "okay";
+	/delete-property/ apple,soc-die-keys;
+	/delete-node/ temperature-TH0x;
+	/delete-node/ temperature-TB0T;
+	/delete-node/ temperature-TCHP;
+	/delete-node/ temperature-TW0P;
+
+	fan-F0Ac {
+		apple,fan-mode = "F0md";
+	};
+
+	fan-F1Ac {
+		apple,fan-mode = "F1md";
+	};
+};
+
 / {
 	aliases {
 		/* kboot fills the N1's factory addresses from /chosen through these */
