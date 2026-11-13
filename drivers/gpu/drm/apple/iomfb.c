@@ -926,6 +926,21 @@ static bool dcp_tag_listed(const char *list, const char tag[4])
 	return false;
 }
 
+static char *dcp_tag_map;
+module_param(dcp_tag_map, charp, 0444);
+MODULE_PARM_DESC(dcp_tag_map, "comma-separated OLD=NEW tag renames applied to every send (firmware tag bring-up)");
+
+/* Rewrite tag in place if list holds an OLD=NEW entry for it. */
+static void dcp_tag_rename(const char *list, char tag[4])
+{
+	for (; *list; list++)
+		if (!strncmp(list, tag, 4) && list[4] == '=' && list[5] && list[6] && list[7] && list[8] &&
+		    (!list[9] || list[9] == ',')) {
+			memcpy(tag, list + 5, 4);
+			return;
+		}
+}
+
 /* Call a DCP function given by a tag */
 static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 			     const struct dcp_method_entry *call, u32 in_len,
@@ -955,6 +970,8 @@ static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 			cb(dcp, zero, cookie);
 		return;
 	}
+	if (dcp_tag_map)
+		dcp_tag_rename(dcp_tag_map, resolved.tag);
 	if (dcp_tag_shift && resolved.tag[0] == 'A') {
 		int num = (resolved.tag[1] - '0') * 100 + (resolved.tag[2] - '0') * 10 +
 			  (resolved.tag[3] - '0') + dcp_tag_shift;
