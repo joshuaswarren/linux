@@ -907,6 +907,16 @@ static int iomfb_queue_command(struct apple_dcp *dcp, bool oob,
 	return ret;
 }
 
+static bool dcp_tag_probe;
+module_param(dcp_tag_probe, bool, 0444);
+MODULE_PARM_DESC(dcp_tag_probe, "log every IOMFB tag sent to the DCP (firmware tag bring-up)");
+static int dcp_tag_shift;
+module_param(dcp_tag_shift, int, 0444);
+MODULE_PARM_DESC(dcp_tag_shift, "add this to the number of every A### tag sent (firmware tag bring-up)");
+static char *dcp_tag_skip;
+module_param(dcp_tag_skip, charp, 0444);
+MODULE_PARM_DESC(dcp_tag_skip, "answer this tag locally with zeros instead of sending it (firmware tag bring-up)");
+
 /* Call a DCP function given by a tag */
 static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 			     const struct dcp_method_entry *call, u32 in_len,
@@ -928,6 +938,27 @@ static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 	if (dcp->hw.iomfb_method_profile == DCP_IOMFB_METHODS_H17G &&
 	    call->tag_h17g[0])
 		memcpy(resolved.tag, call->tag_h17g, sizeof(resolved.tag));
+	if (dcp_tag_skip && !strncmp(resolved.tag, dcp_tag_skip, 4)) {
+		u8 zero[64] = {};
+
+		dev_info(dcp->dev, "dcp-probe: skipped %.4s\n", resolved.tag);
+		if (out_len <= sizeof(zero) && cb)
+			cb(dcp, zero, cookie);
+		return;
+	}
+	if (dcp_tag_shift && resolved.tag[0] == 'A') {
+		int num = (resolved.tag[1] - '0') * 100 + (resolved.tag[2] - '0') * 10 +
+			  (resolved.tag[3] - '0') + dcp_tag_shift;
+
+		if (num >= 0 && num < 1000) {
+			resolved.tag[1] = '0' + num / 100;
+			resolved.tag[2] = '0' + num / 10 % 10;
+			resolved.tag[3] = '0' + num % 10;
+		}
+	}
+	if (dcp_tag_probe)
+		dev_info(dcp->dev, "dcp-probe: send %.4s in %u out %u\n",
+			 resolved.tag, in_len, out_len);
 	call = &resolved;
 
 	struct dcp_channel *ch = dcp_get_channel(dcp, context);
