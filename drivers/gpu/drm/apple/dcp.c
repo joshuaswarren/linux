@@ -5024,7 +5024,8 @@ static int dcp_read_fw_version(struct device *dev, const char *name,
 	return len;
 }
 
-static enum dcp_firmware_version dcp_check_firmware_version(struct device *dev)
+static enum dcp_firmware_version dcp_check_firmware_version(struct device *dev,
+							    bool *tags_27_3)
 {
 	const struct apple_dcp_hw_data *hw = of_device_get_match_data(dev);
 	const struct dcp_v14_board *v14_board;
@@ -5034,7 +5035,11 @@ static enum dcp_firmware_version dcp_check_firmware_version(struct device *dev)
 
 	if (hw->firmware_compat == DCP_FIRMWARE_V_27_0) {
 		ret = dcp_read_fw_version(dev, "apple,firmware-compat", compat_str);
-		if (ret < 0 || strcmp(compat_str, "27.0.0"))
+		if (ret < 0)
+			return DCP_FIRMWARE_UNKNOWN;
+		/* 27.3 keeps the 27.0 interface but renumbers the method tags */
+		*tags_27_3 = !strcmp(compat_str, "27.3.0");
+		if (strcmp(compat_str, "27.0.0") && !*tags_27_3)
 			return DCP_FIRMWARE_UNKNOWN;
 		return DCP_FIRMWARE_V_27_0;
 	}
@@ -6054,6 +6059,7 @@ static int dcp_platform_probe_pipe(struct platform_device *pdev)
 {
 	const struct apple_dcp_hw_data *hw = of_device_get_match_data(&pdev->dev);
 	enum dcp_firmware_version fw_compat;
+	bool tags_27_3 = false;
 	struct device *dev = &pdev->dev;
 	struct apple_dcp *dcp;
 	int ret, surf, num_surfs;
@@ -6071,7 +6077,7 @@ static int dcp_platform_probe_pipe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	fw_compat = dcp_check_firmware_version(dev);
+	fw_compat = dcp_check_firmware_version(dev, &tags_27_3);
 	if (fw_compat == DCP_FIRMWARE_UNKNOWN)
 		return -ENODEV;
 	if (fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) {
@@ -6107,6 +6113,7 @@ static int dcp_platform_probe_pipe(struct platform_device *pdev)
 	iomfb_queue_init(dcp);
 
 	dcp->fw_compat = fw_compat;
+	dcp->tags_27_3 = tags_27_3;
 	/*
 	 * Probe-lifetime like the desktop state: component bind opens a devres
 	 * group on this device and releases it on failure or unbind.

@@ -43,6 +43,7 @@
 #include "iomfb_m4.h"
 #include "parser.h"
 #include "trace.h"
+#include "iomfb_v27_3_tags.h"
 
 struct dcp_identity_trace {
 	struct apple_dcp *dcp;
@@ -962,6 +963,12 @@ static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 	if (dcp->hw.iomfb_method_profile == DCP_IOMFB_METHODS_H17G &&
 	    call->tag_h17g[0])
 		memcpy(resolved.tag, call->tag_h17g, sizeof(resolved.tag));
+	if (dcp->tags_27_3) {
+		const char *tag_27_3 = dcp_v27_3_tag(resolved.tag);
+
+		if (tag_27_3)
+			memcpy(resolved.tag, tag_27_3, sizeof(resolved.tag));
+	}
 	if (dcp_tag_skip && dcp_tag_listed(dcp_tag_skip, resolved.tag)) {
 		u8 zero[64] = {};
 

@@ -469,6 +469,8 @@ struct apple_dcp {
 
 	/* firmware version and compatible firmware version */
 	enum dcp_firmware_version fw_compat;
+	/* the firmware numbers its methods as 27.3 does */
+	bool tags_27_3;
 	/* Bumped by every iomfb poweron; see afk_compact_slot(). */
 	u32 afk_power_gen;
 	bool external;
