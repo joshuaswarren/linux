@@ -557,6 +557,15 @@ DCP_THUNK_INOUT(dcp_pipe_set_352, dcpep_pipe_set_352, struct dcp_pipe_set_352_re
 /* w86 probe: macOS sends A400 and A379 (twice) at first client open, 0 bytes in, 4 bytes out. */
 DCP_THUNK_OUT(dcp_pipe_query_400, dcpep_pipe_query_400, u32);
 DCP_THUNK_OUT(dcp_pipe_query_379, dcpep_pipe_query_379, u32);
+/* macOS A378: 44 bytes in (length word 0x28, rest zero), 40 bytes out (panel limits 50/100/20/30 seen). */
+struct dcp_w86_378_req {
+	u8 data[44];
+} __packed;
+struct dcp_w86_378_resp {
+	u8 data[40];
+} __packed;
+DCP_THUNK_INOUT(dcp_pipe_query_378, dcpep_pipe_query_378,
+		struct dcp_w86_378_req, struct dcp_w86_378_resp);
 
 static void dcp_started_next(struct apple_dcp *dcp, void *data, void *cookie);
 
@@ -3261,10 +3270,19 @@ static void dcp_w86_send_a352(struct apple_dcp *dcp)
 	dcp_pipe_set_352(dcp, false, &req, NULL, NULL);
 }
 
+static void dcp_w86_after_378(struct apple_dcp *dcp, void *out, void *cookie)
+{
+	dev_info(dcp->dev, "w86-a378: reply %*ph\n", out ? 40 : 0, out);
+	dcp_w86_send_a352(dcp);
+}
+
 static void dcp_w86_after_379b(struct apple_dcp *dcp, void *out, void *cookie)
 {
+	struct dcp_w86_378_req req = {};
+
 	dev_info(dcp->dev, "w86-a379: second reply %u\n", out ? get_unaligned_le32(out) : 0xdead);
-	dcp_w86_send_a352(dcp);
+	req.data[0] = 0x28;
+	dcp_pipe_query_378(dcp, false, &req, dcp_w86_after_378, NULL);
 }
 
 static void dcp_w86_after_379a(struct apple_dcp *dcp, void *out, void *cookie)
