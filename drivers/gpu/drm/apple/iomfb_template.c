@@ -1409,6 +1409,33 @@ static struct DCP_FW_NAME(dcp_map_reg_resp) dcpep_cb_map_reg(struct apple_dcp *d
 static dcp_read_edt_data_resp_t
 dcpep_cb_read_edt_data(struct apple_dcp *dcp, struct dcp_read_edt_data_req *req)
 {
+#if (DCP_FW_H17(DCP_FW_VER) && DCP_FW_VER >= DCP_FW_VERSION(27, 0, 0))
+	/*
+	 * The firmware reads the display node's boot properties (color-accuracy-index,
+	 * display-timing-info, ...) through this call. Answer color-accuracy-index from the DT node when it holds
+	 * exactly count little-endian words, as macOS does; every other key echoes the default.
+	 */
+	if (strnlen(req->key, sizeof(req->key)) < sizeof(req->key) &&
+	    req->count && req->count <= ARRAY_SIZE(req->value)) {
+		const struct property *prop = of_find_property(dcp->dev->of_node, req->key, NULL);
+		dcp_read_edt_data_resp_t resp = { .ret = 0 };
+
+		/* w86 probe, remove after the keys are known */
+		dev_info(dcp->dev, "w86-edt: key=%.*s count=%u found=%d len=%d\n",
+			 (int)strnlen(req->key, sizeof(req->key)), req->key, req->count,
+			 !!prop, prop ? prop->length : -1);
+		/* shortcut: first boot answers one key; widen once the color read is confirmed */
+		if (prop && !strncmp(req->key, "color-accuracy-index", sizeof(req->key)) &&
+		    prop->length == req->count * sizeof(u32)) {
+			const __le32 *src = prop->value;
+
+			for (u32 i = 0; i < req->count; i++)
+				resp.value[i] = le32_to_cpu(src[i]);
+			resp.ret = 1;
+			return resp;
+		}
+	}
+#endif
 	/* Observe boot-property requests without inventing firmware timings. */
 	if (dcp->fixed_connector_type != DRM_MODE_CONNECTOR_eDP)
 		dev_dbg(dcp->dev,
