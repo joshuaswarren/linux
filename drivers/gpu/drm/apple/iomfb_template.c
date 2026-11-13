@@ -751,6 +751,7 @@ static void complete_vi_set_temperature_hint(struct apple_dcp *dcp, void *out, v
 
 static bool iomfbep_cb_match_pmu_service(struct apple_dcp *dcp, int tag, void *out, void *in)
 {
+	dev_info(dcp->dev, "w86-d100: match_pmu_service\n");
 	trace_iomfb_callback(dcp, tag, __func__);
 	iomfb_a358_vi_set_temperature_hint(dcp, false,
 					   complete_vi_set_temperature_hint,
@@ -828,6 +829,8 @@ static void complete_dfb_surface(struct apple_dcp *dcp, void *out, void *cookie)
 #if (DCP_FW_H17(DCP_FW_VER) && DCP_FW_VER >= DCP_FW_VERSION(27, 0, 0))
 	struct dcp_channel *ch = &dcp->ch_cb;
 
+	dev_info(dcp->dev, "w86-d582: A472 register_dfb_surface result %u\n",
+		 out ? get_unaligned_le32(out) : 0xdead);
 	*(u8 *)ch->output[ch->depth - 1] = out && !get_unaligned_le32(out);
 	dcp_ack(dcp, DCP_CONTEXT_CB);
 #else
@@ -841,6 +844,8 @@ static bool iomfbep_cb_create_dfb_surface(struct apple_dcp *dcp, int tag,
 	struct dcp_h17p_dfb_surface_req *req;
 
 	trace_iomfb_callback(dcp, tag, __func__);
+	dev_info(dcp->dev, "w86-d582: create_dfb_surface request, dim %ux%u\n",
+		 get_unaligned_le32(in), get_unaligned_le32(in + 4));
 
 	/*
 	 * The request is too large for the stack this deep in the RTKit
@@ -954,6 +959,9 @@ static bool iomfbep_cb_match_backlight_service(struct apple_dcp *dcp, int tag, v
 
 static void iomfb_cb_pr_publish(struct apple_dcp *dcp, struct iomfb_property *prop)
 {
+	/* w86 probe: D300 id/value; macOS makes about 191 of these before the panel stage */
+	dev_info(dcp->dev, "w86-d300: pr_publish id %u value %u has_panel %d\n",
+		 prop->id, prop->value, dcp_has_panel(dcp));
 	switch (prop->id) {
 #if !DCP_FW_DESKTOP_26(DCP_FW_VER)
 	/* The desktop 26.x firmware publishes no panel level here. */
@@ -1006,6 +1014,9 @@ dcpep_cb_get_uint_prop(struct apple_dcp *dcp, struct dcp_get_uint_prop_req *req)
 	    }
 	}
 
+	dev_info(dcp->dev, "w86-d401: reply obj=%.4s key=%.*s ret=%u value=%llu has_mini_led=%d\n",
+		 req->obj, (int)strnlen(req->key, sizeof(req->key)), req->key, resp.ret,
+		 (u64)resp.value, dcp->panel.has_mini_led);
 	return resp;
 }
 

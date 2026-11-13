@@ -168,6 +168,8 @@ static bool trampoline_hotplug_h17p(struct apple_dcp *dcp, int tag,
 {
 	const struct dcp_h17p_hotplug_request *request = in;
 
+	dev_info(dcp->dev, "w86-d575: hotplug connected=%llu tiled_null=%u\n",
+		 le64_to_cpu(request->connected), request->tiled_display_null);
 	/* The opt-in peer allocator needs the firmware's tiling metadata to verify
 	 * the VFTG relationship before implementing its framebuffer lifecycle.
 	 * Keep both halves: the endpoint IDs are at the end of this payload.
