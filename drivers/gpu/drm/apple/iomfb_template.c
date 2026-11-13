@@ -358,6 +358,30 @@ DCP_THUNK_OUT(dcp_finish_wake, dcpep_pipe_query_474, u32);
 IOMFB_THUNK_INOUT(abort_swaps_dcp);
 #endif
 
+#if (DCP_FW_H17(DCP_FW_VER) && DCP_FW_VER >= DCP_FW_VERSION(27, 0, 0))
+/* w86 probe: nonzero 32-byte rows of the wire swap request, for the first 3 swaps after each 20 s gap. */
+static void dcp_w86_dump_swap(struct apple_dcp *dcp, const void *wire, size_t len)
+{
+	const u8 *p = wire;
+	size_t off;
+	u32 n = ++dcp->w86_swap_count;
+
+	if (time_after(jiffies, dcp->w86_swap_last + 20 * HZ))
+		dcp->w86_swap_budget = 3;
+	dcp->w86_swap_last = jiffies;
+	if (!dcp->w86_swap_budget)
+		return;
+	dcp->w86_swap_budget--;
+	dev_info(dcp->dev, "w86-swap: #%u len %zu\n", n, len);
+	for (off = 0; off < len; off += 32) {
+		size_t row = min_t(size_t, 32, len - off);
+
+		if (memchr_inv(p + off, 0, row))
+			dev_info(dcp->dev, "w86-swap: #%u +%04zx %*ph\n", n, off, (int)row, p + off);
+	}
+}
+#endif
+
 #if DCP_FW_H17(DCP_FW_VER)
 static void dcp_swap_submit(struct apple_dcp *dcp, bool oob,
 			    struct dcp_swap_submit_req_h17p *request,
@@ -379,6 +403,7 @@ static void dcp_swap_submit(struct apple_dcp *dcp, bool oob,
 		dcp->present_v27.swap.brightness_nits =
 			get_unaligned_le64(dcp->present_h17p.swap + 0x35e);
 		data = &dcp->present_v27;
+		dcp_w86_dump_swap(dcp, &dcp->present_v27, sizeof(dcp->present_v27));
 #else
 		data = &dcp->present_h17p;
 #endif
