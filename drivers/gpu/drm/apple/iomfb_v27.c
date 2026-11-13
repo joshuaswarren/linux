@@ -226,6 +226,13 @@ static bool trampoline_get_data_prop_v27(struct apple_dcp *dcp, int tag,
 	const struct property *prop;
 	u32 cap = min_t(u32, le32_to_cpu(req->length), sizeof(resp->data));
 
+	/* w86 probe, remove after the keys are known */
+	dev_info(dcp->dev, "w86-d400: obj=%.4s key=%.*s want=%u found=%d len=%d\n", req->obj,
+		 (int)strnlen(req->key, sizeof(req->key)), req->key, le32_to_cpu(req->length),
+		 !!of_find_property(dcp->dev->of_node, req->key, NULL),
+		 of_find_property(dcp->dev->of_node, req->key, NULL) ?
+		 of_find_property(dcp->dev->of_node, req->key, NULL)->length : -1);
+
 	if (memcmp(req->obj, "VORP", sizeof(req->obj)) ||
 	    strnlen(req->key, sizeof(req->key)) == sizeof(req->key))
 		return true;
