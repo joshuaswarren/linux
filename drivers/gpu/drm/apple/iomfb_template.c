@@ -529,6 +529,9 @@ struct dcp_pipe_set_352_req {
 	__le32 value;
 } __packed;
 DCP_THUNK_INOUT(dcp_pipe_set_352, dcpep_pipe_set_352, struct dcp_pipe_set_352_req, u32);
+/* w86 probe: macOS sends A400 and A379 (twice) at first client open, 0 bytes in, 4 bytes out. */
+DCP_THUNK_OUT(dcp_pipe_query_400, dcpep_pipe_query_400, u32);
+DCP_THUNK_OUT(dcp_pipe_query_379, dcpep_pipe_query_379, u32);
 
 static void dcp_started_next(struct apple_dcp *dcp, void *data, void *cookie);
 
@@ -3215,6 +3218,37 @@ static u64 __maybe_unused dcp_swap_prev_time(u64 now, u64 prev)
  * complete event so we need to fake a vblank event early to avoid a hang.
  */
 
+#if (DCP_FW_H17(DCP_FW_VER) && DCP_FW_VER >= DCP_FW_VERSION(27, 0, 0))
+static void dcp_w86_send_a352(struct apple_dcp *dcp)
+{
+	struct dcp_pipe_set_352_req req = {
+		.key = cpu_to_le32(0x14),
+		.value = cpu_to_le32(dcp->edr_present_sdr << 16),
+	};
+
+	dev_info(dcp->dev, "w86-a352: key 0x14 nits %u\n", dcp->edr_present_sdr);
+	dcp_pipe_set_352(dcp, false, &req, NULL, NULL);
+}
+
+static void dcp_w86_after_379b(struct apple_dcp *dcp, void *out, void *cookie)
+{
+	dev_info(dcp->dev, "w86-a379: second reply %u\n", out ? get_unaligned_le32(out) : 0xdead);
+	dcp_w86_send_a352(dcp);
+}
+
+static void dcp_w86_after_379a(struct apple_dcp *dcp, void *out, void *cookie)
+{
+	dev_info(dcp->dev, "w86-a379: first reply %u\n", out ? get_unaligned_le32(out) : 0xdead);
+	dcp_pipe_query_379(dcp, false, dcp_w86_after_379b, NULL);
+}
+
+static void dcp_w86_after_400(struct apple_dcp *dcp, void *out, void *cookie)
+{
+	dev_info(dcp->dev, "w86-a400: reply %u\n", out ? get_unaligned_le32(out) : 0xdead);
+	dcp_pipe_query_379(dcp, false, dcp_w86_after_379a, NULL);
+}
+#endif
+
 static void dcp_swapped(struct apple_dcp *dcp, void *data, void *cookie)
 {
 	int ret;
@@ -3249,13 +3283,13 @@ static void dcp_swapped(struct apple_dcp *dcp, void *data, void *cookie)
 #if (DCP_FW_H17(DCP_FW_VER) && DCP_FW_VER >= DCP_FW_VERSION(27, 0, 0))
 	if (dcp->tags_27_3 && dcp_has_panel(dcp) &&
 	    dcp->present_v27.swap.brightness_update) {
-		struct dcp_pipe_set_352_req req = {
-			.key = cpu_to_le32(0x14),
-			.value = cpu_to_le32(dcp->edr_present_sdr << 16),
-		};
-
-		dev_info(dcp->dev, "w86-a352: key 0x14 nits %u\n", dcp->edr_present_sdr);
-		dcp_pipe_set_352(dcp, false, &req, NULL, NULL);
+		if (!dcp->w86_client_open_queries_sent) {
+			dcp->w86_client_open_queries_sent = true;
+			dev_info(dcp->dev, "w86-a400: sending A400\n");
+			dcp_pipe_query_400(dcp, false, dcp_w86_after_400, NULL);
+		} else {
+			dcp_w86_send_a352(dcp);
+		}
 	}
 #endif
 }

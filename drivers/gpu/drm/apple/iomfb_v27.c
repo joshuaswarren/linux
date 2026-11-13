@@ -96,6 +96,8 @@ static const struct dcp_method_entry dcp_methods[dcpep_num_methods] = {
 	IOMFB_METHOD("A384", dcpep_dfb_ready_query),
 	IOMFB_METHOD("A353", dcpep_pipe_query_353),
 	IOMFB_METHOD("A352", dcpep_pipe_set_352),
+	IOMFB_METHOD("A400", dcpep_pipe_query_400),
+	IOMFB_METHOD("A379", dcpep_pipe_query_379),
 	IOMFB_METHOD("A415", dcpep_pipe_cfg_415),
 	IOMFB_METHOD("A033", dcpep_pipe_cfg_031),
 	IOMFB_METHOD("A414", dcpep_pipe_cfg_414),
