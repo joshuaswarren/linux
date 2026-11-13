@@ -63,6 +63,11 @@ struct centauri_t6050_wifi {
 	u8 *reply_buffer;
 	size_t reply_capacity, reply_size;
 	bool stopping, command_failed;
+	/* Diagnostic: stage reads traced for 2 s from the start of a country command. */
+	ktime_t stage_trace_t0;
+	unsigned long stage_trace_until;
+	unsigned long stage_trace_next;
+	u32 stage_trace_last;
 	bool scan_abort, connect_abort;
 	u8 scan_sequence;
 	bool connecting, connected, connect_event, disconnect_event;
@@ -634,6 +639,27 @@ static bool command_payload_consumed(struct centauri_t6050_wifi *wifi, u16 slot)
 }
 
 /*
+ * Diagnostic: every stage value command_reply() reads in the 2 s after a country
+ * command starts, on any change and otherwise at most every 10 ms. Tells a transient
+ * stage from a firmware that is gone: the first value that is not 2 latches the fault.
+ */
+static void stage_trace(struct centauri_t6050_wifi *wifi, u32 id, u16 sequence,
+			u32 stage)
+{
+	if (!time_before(jiffies, wifi->stage_trace_until))
+		return;
+	if (stage == wifi->stage_trace_last &&
+	    time_before(jiffies, wifi->stage_trace_next))
+		return;
+	wifi->stage_trace_last = stage;
+	wifi->stage_trace_next = jiffies + msecs_to_jiffies(10);
+	dev_info(&wifi->control->pdev->dev,
+		 "Wi-Fi stage trace: +%lld us cmd=%#x seq=%u stage=%#x\n",
+		 ktime_us_delta(ktime_get(), wifi->stage_trace_t0), id, sequence,
+		 stage);
+}
+
+/*
  * Send one command and wait for its reply. With a reply buffer, the reply's
  * payload is copied there (up to *reply_size bytes) and *reply_size becomes
  * the payload's length.
@@ -643,7 +669,7 @@ static int command_reply(struct centauri_t6050_wifi *wifi, u32 id,
 			 size_t *reply_size)
 {
 	u16 slot = wifi->command_head, sequence = ++wifi->sequence;
-	int ret;
+	int ret, i;
 	u32 stage;
 	u8 *packet, *descriptor;
 	unsigned long deadline = jiffies + msecs_to_jiffies(1500);
@@ -676,6 +702,12 @@ static int command_reply(struct centauri_t6050_wifi *wifi, u32 id,
 	wifi->reply_size = 0;
 	dma_wmb();
 	writel(1, wifi->a.bar + 0x1004);
+	if (id == 0x1000f) {
+		wifi->stage_trace_t0 = ktime_get();
+		wifi->stage_trace_last = 2;
+		wifi->stage_trace_next = jiffies;
+		wifi->stage_trace_until = jiffies + 2 * HZ;
+	}
 	do {
 		if (READ_ONCE(wifi->stopping) ||
 		    READ_ONCE(wifi->control->removing)) {
@@ -685,10 +717,17 @@ static int command_reply(struct centauri_t6050_wifi *wifi, u32 id,
 		}
 		drain(wifi);
 		stage = readl(wifi->a.bar + 8);
+		stage_trace(wifi, id, sequence, stage);
 		if (stage != 2) {
 			dev_err(&wifi->control->pdev->dev,
 				"Wi-Fi command %#x lost transport: stage=%#x sequence=%u rx=%u\n",
 				id, stage, sequence, wifi->rx_seen[2]);
+			for (i = 1; i <= 8; i++) {
+				usleep_range(1000, 1100);
+				dev_info(&wifi->control->pdev->dev,
+					 "Wi-Fi stage after loss +%d ms: %#x\n", i,
+					 readl(wifi->a.bar + 8));
+			}
 			command_fault(wifi);
 			ret = -EIO;
 			goto out;
@@ -1729,6 +1768,10 @@ static void wifi_regulatory(struct wiphy *wiphy,
 
 	mutex_lock(&wifi->lock);
 	if (wifi->configured && named) {
+		wifi->stage_trace_t0 = ktime_get();
+		wifi->stage_trace_last = 2;
+		wifi->stage_trace_next = jiffies;
+		wifi->stage_trace_until = jiffies + 2 * HZ;
 		ret = command(wifi, 9, country, sizeof(country));
 		if (ret)
 			dev_err(&wifi->control->pdev->dev,
