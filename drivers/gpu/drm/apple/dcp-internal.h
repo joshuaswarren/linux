@@ -559,6 +559,8 @@ struct apple_dcp {
 	u32 edr_present_sdr;
 	/* w86 probe: A400/A379 client-open queries sent once before the first A352 */
 	bool w86_client_open_queries_sent;
+	/* w86 probe: last nonzero A352 key 0x14 value, used instead of 0 while the pipe is on */
+	u32 w86_last_nits;
 	struct dcp_swap_submit_req_v27 present_v27;
 	/* Both paired wire records belong to the primary endpoint lock. */
 	struct dcp_swap_submit_req_v27 peer_present_v27;

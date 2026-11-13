@@ -3221,12 +3221,18 @@ static u64 __maybe_unused dcp_swap_prev_time(u64 now, u64 prev)
 #if (DCP_FW_H17(DCP_FW_VER) && DCP_FW_VER >= DCP_FW_VERSION(27, 0, 0))
 static void dcp_w86_send_a352(struct apple_dcp *dcp)
 {
-	struct dcp_pipe_set_352_req req = {
-		.key = cpu_to_le32(0x14),
-		.value = cpu_to_le32(dcp->edr_present_sdr << 16),
-	};
+	u32 nits = dcp->edr_present_sdr;
+	struct dcp_pipe_set_352_req req;
 
-	dev_info(dcp->dev, "w86-a352: key 0x14 nits %u\n", dcp->edr_present_sdr);
+	if (!nits && dcp->w86_last_nits) {
+		dev_info(dcp->dev, "w86-a352: nits 0 clamped to %u\n", dcp->w86_last_nits);
+		nits = dcp->w86_last_nits;
+	} else if (nits) {
+		dcp->w86_last_nits = nits;
+	}
+	req.key = cpu_to_le32(0x14);
+	req.value = cpu_to_le32(nits << 16);
+	dev_info(dcp->dev, "w86-a352: key 0x14 nits %u\n", nits);
 	dcp_pipe_set_352(dcp, false, &req, NULL, NULL);
 }
 

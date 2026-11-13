@@ -3409,6 +3409,7 @@ bool iomfb_apply_backlight_h17p(struct apple_dcp *dcp,
 		if (!dcp->brightness.maximum)
 			return false;
 		dcp->edr_present_sdr = 0;
+		dev_info(dcp->dev, "w86-nits: source backlight inactive -> 0\n");
 		iomfb_encode_backlight_h17p(wire, 0,
 					    dcp->brightness.maximum, false);
 		return true;
@@ -3425,6 +3426,8 @@ bool iomfb_apply_backlight_h17p(struct apple_dcp *dcp,
 		transaction->backlight_reserved = true;
 	}
 	dcp->edr_present_sdr = present.nits;
+	dev_info(dcp->dev, "w86-nits: source dcp_backlight_prepare ret %d nits %u surface %d\n",
+		 ret, present.nits, have_surface);
 	iomfb_encode_backlight_h17p(wire, present.nits,
 				    dcp->brightness.maximum, !ret);
 	return true;
