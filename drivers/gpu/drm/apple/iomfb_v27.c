@@ -245,6 +245,45 @@ static bool trampoline_get_data_prop_v27(struct apple_dcp *dcp, int tag,
 	return true;
 }
 
+/*
+ * D401: the firmware reads 32-bit properties (color-accuracy-index) by object and key. The
+ * AP-side tree holds them as little-endian bytes, as macOS does.
+ */
+static bool trampoline_get_uint_prop_v27(struct apple_dcp *dcp, int tag, void *out, void *in)
+{
+	const struct dcp_get_uint_prop_req *req = in;
+	struct dcp_get_uint_prop_resp *resp = out;
+	const struct property *prop;
+
+	/* w86 probe, remove after the keys are known */
+	dev_info(dcp->dev, "w86-d401: obj=%.4s key=%.*s null=%u\n", req->obj,
+		 (int)strnlen(req->key, sizeof(req->key)), req->key, req->value_null);
+
+	if (!memcmp(req->obj, "VORP", sizeof(req->obj)) &&
+	    strnlen(req->key, sizeof(req->key)) < sizeof(req->key)) {
+		prop = of_find_property(dcp->dev->of_node, req->key, NULL);
+		if (prop && prop->length == sizeof(u32)) {
+			resp->value = get_unaligned_le32(prop->value);
+			resp->ret = true;
+			return true;
+		}
+	}
+	return trampoline_get_uint_prop(dcp, tag, out, in);
+}
+
+/* w86 probe, remove after the keys are known: log the object and key of the property setters. */
+#define W86_LOG_SET(name, orig)							\
+static bool name(struct apple_dcp *dcp, int tag, void *out, void *in)		\
+{										\
+	const char *obj = in;							\
+										\
+	dev_info(dcp->dev, "w86-set: D%d obj=%.4s key=%.*s\n", tag, obj,	\
+		 (int)strnlen(obj + 4, 0x40), obj + 4);				\
+	return orig(dcp, tag, out, in);						\
+}
+W86_LOG_SET(w86_set_nop, trampoline_nop)
+W86_LOG_SET(w86_set_int, trampoline_sr_set_property_int)
+
 struct dcp_allocate_buffer_req_v27 {
 	__le32 options;
 	__le64 size;
@@ -417,8 +456,8 @@ static const iomfb_cb_handler cb_handlers[IOMFB_MAX_CB] = {
 	[6] = trampoline_set_frame_sync_props_h17p,
 	[100] = iomfbep_cb_match_pmu_service,
 	[101] = trampoline_zero,
-	[102] = trampoline_nop,
-	[104] = trampoline_nop,
+	[102] = w86_set_nop,
+	[104] = w86_set_nop,
 	[106] = trampoline_nop,
 	[107] = trampoline_true,
 	[108] = trampoline_true,
@@ -455,13 +494,13 @@ static const iomfb_cb_handler cb_handlers[IOMFB_MAX_CB] = {
 	[209] = trampoline_get_time,
 	[300] = trampoline_pr_publish,
 	[400] = trampoline_get_data_prop_v27,
-	[401] = trampoline_get_uint_prop,
-	[404] = trampoline_nop,
+	[401] = trampoline_get_uint_prop_v27,
+	[404] = w86_set_nop,
 	[406] = trampoline_set_fx_prop,
 	[408] = trampoline_get_frequency_v27,
 	[411] = trampoline_map_reg,
 	[413] = trampoline_true,
-	[414] = trampoline_sr_set_property_int,
+	[414] = w86_set_int,
 	[415] = trampoline_true,
 	[451] = trampoline_allocate_buffer_v27,
 	[452] = trampoline_buffer_lifecycle_v27,
