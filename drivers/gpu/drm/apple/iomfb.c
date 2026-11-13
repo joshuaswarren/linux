@@ -915,7 +915,16 @@ module_param(dcp_tag_shift, int, 0444);
 MODULE_PARM_DESC(dcp_tag_shift, "add this to the number of every A### tag sent (firmware tag bring-up)");
 static char *dcp_tag_skip;
 module_param(dcp_tag_skip, charp, 0444);
-MODULE_PARM_DESC(dcp_tag_skip, "answer this tag locally with zeros instead of sending it (firmware tag bring-up)");
+MODULE_PARM_DESC(dcp_tag_skip, "comma-separated tags answered locally with zeros instead of being sent (firmware tag bring-up)");
+
+/* Is the four-character tag one of the comma-separated entries in list? */
+static bool dcp_tag_listed(const char *list, const char tag[4])
+{
+	for (; *list; list++)
+		if (!strncmp(list, tag, 4) && (!list[4] || list[4] == ','))
+			return true;
+	return false;
+}
 
 /* Call a DCP function given by a tag */
 static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
@@ -938,7 +947,7 @@ static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 	if (dcp->hw.iomfb_method_profile == DCP_IOMFB_METHODS_H17G &&
 	    call->tag_h17g[0])
 		memcpy(resolved.tag, call->tag_h17g, sizeof(resolved.tag));
-	if (dcp_tag_skip && !strncmp(resolved.tag, dcp_tag_skip, 4)) {
+	if (dcp_tag_skip && dcp_tag_listed(dcp_tag_skip, resolved.tag)) {
 		u8 zero[64] = {};
 
 		dev_info(dcp->dev, "dcp-probe: skipped %.4s\n", resolved.tag);
