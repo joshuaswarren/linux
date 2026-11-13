@@ -737,3 +737,35 @@
 };
 
 #include "t6050-k114c-display.dtsi"
+
+/*
+ * The boot NOR. spi-nor reads the part's JEDEC ID itself (c8 83 17, 8 MiB). The
+ * nvram partition holds iBoot's 3VVN slots (read on the machine). Writes need the
+ * spi-apple-qspi board entry, the read_only module parameter and an SR1 check.
+ */
+&qspi {
+	status = "okay";
+
+	flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <25000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			nvram: partition@700000 {
+				label = "nvram";
+				reg = <0x700000 0xc0000>;
+			};
+		};
+	};
+};
+
+/ {
+	aliases {
+		nvram = &nvram;
+	};
+};

@@ -8,7 +8,7 @@
  * only; that is sufficient for SPI NOR discovery and access.
  *
  * The boot NOR starts read-only. On the qualified boards (J613, J713,
- * J616s and the J700) root may opt in at runtime to bounded, verified
+ * J616s, J700 and K114c) root may opt in at runtime to bounded, verified
  * programs and 4 KiB erases inside the nvram partition; everything else
  * stays read-only. On T8140 data reads reach the whole NOR.
  */
@@ -150,6 +150,13 @@ static const struct apple_qspi_board apple_qspi_boards[] = {
 	{ "apple,t8140-qspi", "apple,j700", 0x385110000ULL,
 	  0x24000, 0x1d0000, APPLE_QSPI_JEDEC_W25Q16, 0x1c,
 	  APPLE_QSPI_JEDEC_GD25UF16E },
+	/*
+	 * The K114c's NOR is a GigaDevice part (c8 83 17, 8 MiB) whose SR1
+	 * reads 0x00 at boot: no block protect. bp_ok is 0, so any BP bit
+	 * set refuses writes. The partition holds iBoot's 3VVN slots.
+	 */
+	{ "apple,t6050-qspi", "apple,k114c", 0x505118000ULL,
+	  0x700000, 0xc0000, { 0xc8, 0x83, 0x17 }, 0 },
 };
 
 static DEFINE_MUTEX(apple_qspi_policy_lock);

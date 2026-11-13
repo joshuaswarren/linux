@@ -208,6 +208,31 @@ static void qspi_policy_part_status(struct kunit *test)
 	KUNIT_EXPECT_FALSE(test, apple_qspi_part_status_allows_write(0xc2, 0x20, 0, 0, 0x1c));
 }
 
+/* K114c: GigaDevice c8 83 17, SR1 0x00, SR2 0x02 (QE), SR3 0x20 at boot, bp_ok 0. */
+static void qspi_policy_k114c_gate(struct kunit *test)
+{
+	/* The state the part is in at boot is admitted. */
+	KUNIT_EXPECT_TRUE(test, apple_qspi_part_status_allows_write(0xc8, 0x00, 0x02, 0x20, 0));
+	/* Any block-protect bit, BP0 to BP4, refuses the write. */
+	KUNIT_EXPECT_FALSE(test, apple_qspi_part_status_allows_write(0xc8, 0x04, 0x02, 0x20, 0));
+	KUNIT_EXPECT_FALSE(test, apple_qspi_part_status_allows_write(0xc8, 0x08, 0x02, 0x20, 0));
+	KUNIT_EXPECT_FALSE(test, apple_qspi_part_status_allows_write(0xc8, 0x10, 0x02, 0x20, 0));
+	KUNIT_EXPECT_FALSE(test, apple_qspi_part_status_allows_write(0xc8, 0x20, 0x02, 0x20, 0));
+	KUNIT_EXPECT_FALSE(test, apple_qspi_part_status_allows_write(0xc8, 0x40, 0x02, 0x20, 0));
+	/* BUSY, WEL, CMP and both suspend bits refuse it too. */
+	KUNIT_EXPECT_FALSE(test, apple_qspi_part_status_allows_write(0xc8, 0x01, 0x02, 0x20, 0));
+	KUNIT_EXPECT_FALSE(test, apple_qspi_part_status_allows_write(0xc8, 0x02, 0x02, 0x20, 0));
+	KUNIT_EXPECT_FALSE(test, apple_qspi_part_status_allows_write(0xc8, 0x00, 0x42, 0x20, 0));
+	KUNIT_EXPECT_FALSE(test, apple_qspi_part_status_allows_write(0xc8, 0x00, 0x82, 0x20, 0));
+	KUNIT_EXPECT_FALSE(test, apple_qspi_part_status_allows_write(0xc8, 0x00, 0x06, 0x20, 0));
+	/* The nvram partition is the only window the mutation policy admits. */
+	KUNIT_EXPECT_TRUE(test, apple_qspi_mutation_allowed(0x20, 3, 0x700000, 0, 0, 0x700000, 0x7c0000));
+	KUNIT_EXPECT_TRUE(test, apple_qspi_mutation_allowed(0x20, 3, 0x7bf000, 0, 0, 0x700000, 0x7c0000));
+	KUNIT_EXPECT_FALSE(test, apple_qspi_mutation_allowed(0x20, 3, 0x6ff000, 0, 0, 0x700000, 0x7c0000));
+	KUNIT_EXPECT_FALSE(test, apple_qspi_mutation_allowed(0x20, 3, 0x7c0000, 0, 0, 0x700000, 0x7c0000));
+	KUNIT_EXPECT_FALSE(test, apple_qspi_mutation_allowed(0x02, 3, 0x7bff80, 256, 1, 0x700000, 0x7c0000));
+}
+
 static struct kunit_case apple_qspi_policy_cases[] = {
 	KUNIT_CASE(qspi_policy_write_enable),
 	KUNIT_CASE(qspi_policy_program),
@@ -220,6 +245,7 @@ static struct kunit_case apple_qspi_policy_cases[] = {
 	KUNIT_CASE(qspi_policy_mx_status),
 	KUNIT_CASE(qspi_policy_gd_status),
 	KUNIT_CASE(qspi_policy_part_status),
+	KUNIT_CASE(qspi_policy_k114c_gate),
 	{}
 };
 
