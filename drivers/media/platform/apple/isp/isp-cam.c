@@ -1181,7 +1181,6 @@ void apple_isp_stop_camera(struct apple_isp *isp)
  * the running hardware.
  */
 static int apple_isp_dcp_indicator_set(struct device *dcp, bool on);
-static bool apple_isp_dcp_indicator_lit(struct device *dcp);
 
 static void apple_isp_wdt_kick(struct apple_isp *isp)
 {
@@ -1197,10 +1196,6 @@ static enum hrtimer_restart apple_isp_wdt_timer(struct hrtimer *timer)
 					     wdt_timer);
 
 	if (apple_isp_light_gpio(isp) && !isp->cil_lit)
-		return HRTIMER_NORESTART;
-	/* A lost indicator means no frame may pass: stop feeding. */
-	if (apple_isp_camera_indicator(isp) &&
-	    !apple_isp_dcp_indicator_lit(isp->dcp))
 		return HRTIMER_NORESTART;
 	apple_isp_wdt_kick(isp);
 	hrtimer_forward_now(timer, ns_to_ktime(ISP_WDT_PERIOD_NS));
@@ -1250,12 +1245,6 @@ static int apple_isp_dcp_indicator_set(struct device *dcp, bool on)
 {
 	KUNIT_STATIC_STUB_REDIRECT(apple_isp_dcp_indicator_set, dcp, on);
 	return apple_dcp_camera_indicator_set(dcp, on);
-}
-
-static bool apple_isp_dcp_indicator_lit(struct device *dcp)
-{
-	KUNIT_STATIC_STUB_REDIRECT(apple_isp_dcp_indicator_lit, dcp);
-	return apple_dcp_camera_indicator_lit(dcp);
 }
 
 /*
@@ -1323,19 +1312,14 @@ int apple_isp_start_capture(struct apple_isp *isp)
 	int err;
 
 	/*
-	 * The DCP indicator is software, not a privacy guarantee: stream only
-	 * once it is actually presented on the panel.
+	 * Best-effort software indicator, not a privacy guarantee: the dot
+	 * is requested before the sensor may stream, but the camera does
+	 * not depend on it.
 	 */
 	if (apple_isp_camera_indicator(isp)) {
 		err = apple_isp_dcp_indicator_set(isp->dcp, true);
-		if (err) {
-			dev_err(isp->dev, "camera indicator failed to light (%d), not streaming\n",
-				err);
-			return -EPERM;
-		}
-	} else if (isp->no_light_gpio) {
-		dev_err(isp->dev, "refusing to stream: the camera light is not driven by Linux\n");
-		return -EPERM;
+		if (err)
+			dev_warn_once(isp->dev, "camera indicator not shown: %d\n", err);
 	}
 
 	err = apple_isp_light_on(isp);

@@ -527,8 +527,10 @@ isp_check_firmware_version(struct apple_isp *isp)
 }
 
 /*
- * The DCP presenting the software camera indicator (apple,camera-indicator).
- * A device ref is held for the driver's lifetime and put in remove.
+ * The DCP presenting the software camera indicator (apple,camera-indicator),
+ * best-effort: the camera probes and streams without it. When the node names
+ * a DCP that exists, a device ref is held for the driver's lifetime and put
+ * at remove; otherwise there is no indicator and no ref.
  */
 static struct device *apple_isp_indicator_dcp(struct device *dev)
 {
@@ -540,11 +542,8 @@ static struct device *apple_isp_indicator_dcp(struct device *dev)
 		return NULL;
 	dcp = of_find_device_by_node(np);
 	of_node_put(np);
-	if (!dcp || !device_is_bound(&dcp->dev)) {
-		if (dcp)
-			put_device(&dcp->dev);
-		return ERR_PTR(-EPROBE_DEFER);
-	}
+	if (!dcp)
+		return NULL;
 	return &dcp->dev;
 }
 
@@ -576,7 +575,7 @@ static int apple_isp_probe(struct platform_device *pdev)
 	isp->hw = of_device_get_match_data(dev);
 	isp->dcp = dcp;
 	if (dcp)
-		dev_notice(dev, "camera light is a software indicator presented by the DCP; it is not a privacy guarantee\n");
+		dev_notice(dev, "best-effort software camera indicator via the DCP; not a privacy guarantee, the camera does not depend on it\n");
 	platform_set_drvdata(pdev, isp);
 	dev_set_drvdata(dev, isp);
 

@@ -15,23 +15,16 @@ int apple_drm_t8132_link_device(struct device *consumer);
 
 /*
  * Software camera indicator (interim, not the secure indicator): a
- * kernel-owned overlay on the internal panel. set(true) returns 0 only once
- * a present carried it to the panel. lit() is true only while it is up and
- * the panel is on above the backlight floor. Without DRM_APPLE there is no
- * DCP to present it: consumers get a stable refusal instead of a link
- * failure.
+ * kernel-owned overlay on the internal panel, requested best-effort by the
+ * camera driver. set(true) returns 0 once a present carried it to the panel;
+ * the camera streams regardless of the answer.
  */
 #if IS_ENABLED(CONFIG_DRM_APPLE)
 int apple_dcp_camera_indicator_set(struct device *dcp, bool on);
-bool apple_dcp_camera_indicator_lit(struct device *dcp);
 #else
 static inline int apple_dcp_camera_indicator_set(struct device *dcp, bool on)
 {
 	return -ENODEV;
-}
-static inline bool apple_dcp_camera_indicator_lit(struct device *dcp)
-{
-	return false;
 }
 #endif
 
