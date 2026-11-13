@@ -1052,10 +1052,9 @@ static int dptxport_call(struct apple_epic_service *service, u32 idx,
 	struct apple_dcp *dcp = service->ep->dcp;
 	int ret = dptxport_call_inner(service, idx, data, data_size, reply, reply_size);
 
-	if (dcp->external)
-		dev_info(dcp->dev, "w86-dptx: apcall %u size %zu -> ret %d reply %*ph lane_count %d\n",
+	dev_info(dcp->dev, "w86-dptx: apcall %u size %zu -> ret %d reply %*ph lane_count %d\n",
 			 idx, data_size, ret, (int)min(reply_size, (size_t)16), reply,
-			 ((struct dptx_port *)service->cookie)->lane_count);
+		 ((struct dptx_port *)service->cookie)->lane_count);
 	return ret;
 }
 
