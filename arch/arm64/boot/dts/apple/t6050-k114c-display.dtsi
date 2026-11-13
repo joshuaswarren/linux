@@ -37,6 +37,26 @@
 	apple,dma-range = <0x100 0x0 0x300 0x0>;
 };
 
+&dcp {
+	/*
+	 * Swap slot 3 carries the kernel's software camera indicator; slots 0 and 1 are
+	 * the userspace planes. Best effort, not a privacy guarantee.
+	 */
+	apple,camera-indicator-surface = <3>;
+
+	/*
+	 * The 14.2-inch tandem OLED panel. The size is the J714s panel's: the same 14-inch
+	 * chassis. The OS takes the dimensions from the ADT when it has them; this K114c ADT
+	 * has none.
+	 */
+	panel {
+		compatible = "apple,panel-k114", "apple,panel";
+		width-mm = <302>;
+		height-mm = <196>;
+		adj-height-mm = <189>;
+	};
+};
+
 /* The ADT lists no clocks for the external engines (clock-ids = []) */
 &dcpext1 {
 	apple,clock-ids;
