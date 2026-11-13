@@ -72,6 +72,7 @@ struct ane_fw_backend {
 	 */
 	struct ane_fw_surface preload[2], heap_tail;
 	u64 preload_phys[2];
+	const u8 *text_pin;
 	u8 data_digest[SHA256_DIGEST_SIZE];
 	/* Powered down for system sleep; a (cold or warm) boot is due. */
 	bool slept;
@@ -644,7 +645,7 @@ static int ane_fw_reload_segment(struct ane_fw_backend *b, unsigned int i)
 	memunmap(source);
 	dma_wmb();
 	sha256(s->cpu, s->size, digest);
-	return memcmp(digest, i ? b->data_digest : b->soc->text_pin, sizeof(digest)) ?
+	return memcmp(digest, i ? b->data_digest : b->text_pin, sizeof(digest)) ?
 	       -EKEYREJECTED : 0;
 }
 
@@ -1232,6 +1233,7 @@ static int ane_fw_preload(struct ane_fw_backend *b)
 	ret = ane_fw_preload_metadata(b, physical, size, dva, data_pin, &have_data_pin);
 	if (ret)
 		return ret;
+	b->text_pin = ane_fw_preload_text_pin(b->soc, size, dva);
 	for (i = 0; i < 2; i++) {
 		void *source = memremap(physical[i], size[i], MEMREMAP_WB);
 		struct sha256_ctx hash;
@@ -1254,7 +1256,7 @@ static int ane_fw_preload(struct ane_fw_backend *b)
 		sha256_init(&hash);
 		sha256_update(&hash, snapshots[i].cpu, size[i]);
 		sha256_final(&hash, digest);
-		if (memcmp(digest, i ? data_pin : b->soc->text_pin, sizeof(digest)))
+		if (memcmp(digest, i ? data_pin : b->text_pin, sizeof(digest)))
 			return -EKEYREJECTED;
 	}
 	/* Preserve every personalized DATA byte, including the iBoot TLV table. */
@@ -1741,7 +1743,8 @@ static bool ane_fw_handoff_present(struct platform_device *pdev,
 		if (text) {
 			sha256(text, h.size[0], digest);
 			memunmap(text);
-			h.text_ok = !memcmp(digest, soc->text_pin, sizeof(digest));
+			h.text_ok = !memcmp(digest, ane_fw_preload_text_pin(soc, h.size, h.dva),
+					    sizeof(digest));
 		}
 	}
 	*hp = h;

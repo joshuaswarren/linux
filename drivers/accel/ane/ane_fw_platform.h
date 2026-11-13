@@ -24,6 +24,13 @@ enum ane_fw_irq_role {
 	ANE_FW_IRQ_CHANNELS,
 };
 
+/* A firmware build iBoot may preload beside the platform's primary one. */
+struct ane_fw_preload_layout {
+	u64 dva[2];
+	u64 size[2];
+	const u8 *text_pin;
+};
+
 /* Later firmware generations must never enter the H14 staging path. */
 struct ane_fw_platform {
 	const struct ane_h16_profile *h16_profiles;
@@ -93,7 +100,46 @@ struct ane_fw_platform {
 	u16 dart_revision;
 	u8 dapf_count;
 	const u8 *text_pin;
+	/* Other preloads iBoot has been seen to load, each with its own TEXT digest. */
+	const struct ane_fw_preload_layout *more_layouts;
+	unsigned int more_layout_count;
 };
+
+static inline bool
+ane_fw_preload_layout_known(const struct ane_fw_platform *soc, const u64 size[2], const u64 dva[2])
+{
+	unsigned int i;
+
+	if (size[0] == soc->preload_size[0] && size[1] == soc->preload_size[1] &&
+	    dva[0] == soc->preload_dva[0] && dva[1] == soc->preload_dva[1])
+		return true;
+	for (i = 0; i < soc->more_layout_count; i++) {
+		const struct ane_fw_preload_layout *l = &soc->more_layouts[i];
+
+		if (size[0] == l->size[0] && size[1] == l->size[1] &&
+		    dva[0] == l->dva[0] && dva[1] == l->dva[1])
+			return true;
+	}
+	return false;
+}
+
+/* The pinned TEXT digest of the build whose layout this is; NULL for a layout no build has. */
+static inline const u8 *
+ane_fw_preload_text_pin(const struct ane_fw_platform *soc, const u64 size[2], const u64 dva[2])
+{
+	unsigned int i;
+
+	if (!ane_fw_preload_layout_known(soc, size, dva))
+		return NULL;
+	for (i = 0; i < soc->more_layout_count; i++) {
+		const struct ane_fw_preload_layout *l = &soc->more_layouts[i];
+
+		if (size[0] == l->size[0] && size[1] == l->size[1] &&
+		    dva[0] == l->dva[0] && dva[1] == l->dva[1])
+			return l->text_pin;
+	}
+	return soc->text_pin;
+}
 
 /* Pure range check: the boot loader supplies the physical addresses. */
 static inline bool
@@ -103,10 +149,10 @@ ane_fw_preload_ranges_valid(const struct ane_fw_platform *soc, const u64 phys[2]
 	u64 end[2];
 	unsigned int i;
 
+	if (!ane_fw_preload_layout_known(soc, size, dva))
+		return false;
 	for (i = 0; i < 2; i++) {
 		if (!phys[i] || !IS_ALIGNED(phys[i], SZ_16K) ||
-		    size[i] != soc->preload_size[i] ||
-		    dva[i] != soc->preload_dva[i] ||
 		    check_add_overflow(phys[i], size[i], &end[i]))
 			return false;
 	}
