@@ -974,6 +974,15 @@ static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 			if (!swap_27_3) {
 				WRITE_ONCE(dcp->crashed, true);
 				return;
+		/* w86 probe, remove after the layout is known: swap with brightness_update set (27.0 +0x354) */
+		if (((const u8 *)data)[0x354] & 1) {
+			dev_info(dcp->dev, "w86-swap-bl: nits=%016llx\n",
+				 get_unaligned_le64((const u8 *)data + 0x35e));
+			print_hex_dump(KERN_INFO, "w86-swap-src: ", DUMP_PREFIX_OFFSET, 16, 1,
+				       (const u8 *)data + 0x350, 0xa0, false);
+			print_hex_dump(KERN_INFO, "w86-swap-dst: ", DUMP_PREFIX_OFFSET, 16, 1,
+				       swap_27_3 + 0x350, 0xe0, false);
+		}
 			}
 			dcp_v27_3_swap_req(swap_27_3, data);
 			data = swap_27_3;
