@@ -183,9 +183,9 @@ properties:
     description: |
       Swap slot the kernel reserves for the software camera indicator, a
       kernel-owned overlay on the internal panel that the camera driver shows
-      while it streams. The slot must not be enabled in apple,iomfb-surfaces.
-      Userspace cannot use the slot. This is an interim software indicator,
-      not the secure indicator; it goes away when the real one is available.
+      while it streams, on a best-effort basis: the camera does not depend on
+      it. The slot must not be enabled in apple,iomfb-surfaces. Userspace cannot
+      use the slot. This is a software indicator, not a privacy guarantee.
 
   apple,power-lut-data-x:
     $ref: /schemas/types.yaml#/definitions/uint8-array

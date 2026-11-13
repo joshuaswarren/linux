@@ -420,7 +420,6 @@ static void apple_crtc_atomic_disable(struct drm_crtc *crtc,
 	crtc_state = drm_atomic_get_new_crtc_state(commit, crtc);
 
 	if (crtc_state->active_changed && !crtc_state->active) {
-		dcp_indicator_swap_failed(platform_get_drvdata(apple_crtc->dcp));
 		dcp_poweroff(apple_crtc->dcp);
 		if (apple_crtc->fabric_held) {
 			apple_crtc->fabric_held = false;

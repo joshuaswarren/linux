@@ -3,9 +3,9 @@
  * Software camera indicator: a kernel-owned swap layer on the internal panel.
  *
  * The camera driver asks for it before the first frame and drops it after the
- * last. Userspace has no plane, property or ioctl for it. This is a software
- * indicator, not the secure one: it can be defeated by running another
- * kernel. See dcp-indicator.h.
+ * last. Userspace has no plane, property or ioctl for it. Best effort: the
+ * camera does not wait on the result. A software indicator, not the secure
+ * one. See dcp-indicator.h.
  */
 #include <linux/jiffies.h>
 #include <linux/mutex.h>
@@ -26,7 +26,6 @@
 #include "dcp.h"
 #include "dcp-internal.h"
 #include "dcp-indicator.h"
-#include "dcp_backlight.h"
 #include "plane.h"
 
 /* DCP rejects blended surfaces smaller than 32x32 (see plane.c). */
@@ -35,7 +34,7 @@
 #define IND_BORDER		3
 #define IND_FILL		0xffff9500
 #define IND_EDGE		0xff000000
-#define IND_PRESENT_TIMEOUT	msecs_to_jiffies(2000)
+#define IND_PRESENT_TIMEOUT	msecs_to_jiffies(1000)
 
 int dcp_indicator_probe(struct apple_dcp *dcp)
 {
@@ -168,15 +167,6 @@ retry:
 			ret = -ENODEV;
 			goto out;
 		}
-		/* A colour transform could hide the square. */
-		if (!dcp_ind_ctm_identity(cs->ctm ? cs->ctm->data : NULL) ||
-		    !dcp_ind_lut_identity(cs->degamma_lut ? cs->degamma_lut->data : NULL,
-					  cs->degamma_lut ? drm_color_lut_size(cs->degamma_lut) : 0) ||
-		    !dcp_ind_lut_identity(cs->gamma_lut ? cs->gamma_lut->data : NULL,
-					  cs->gamma_lut ? drm_color_lut_size(cs->gamma_lut) : 0)) {
-			ret = -EBUSY;
-			goto out;
-		}
 		ret = drm_atomic_set_crtc_for_plane(ps, crtc);
 		if (ret)
 			goto out;
@@ -220,8 +210,9 @@ static void dcp_indicator_end(struct apple_dcp *dcp)
 }
 
 /*
- * on: returns 0 only after a present carried the square to the panel; any
- * failure leaves the indicator off. off: always succeeds.
+ * on: returns 0 once a present carried the square to the panel, within 1 s;
+ * otherwise an error and the indicator is left off. The caller streams either
+ * way. off: always succeeds.
  */
 int apple_dcp_camera_indicator_set(struct device *dev, bool on)
 {
@@ -255,11 +246,6 @@ int apple_dcp_camera_indicator_set(struct device *dev, bool on)
 	ret = dcp_indicator_commit(dcp, true);
 	if (!ret && !wait_for_completion_timeout(&ci->presented, IND_PRESENT_TIMEOUT))
 		ret = -ETIMEDOUT;
-	if (!ret) {
-		spin_lock_irqsave(&ci->lock, flags);
-		ret = ci->state.state == DCP_IND_LIT ? 0 : -EIO;
-		spin_unlock_irqrestore(&ci->lock, flags);
-	}
 	if (ret) {
 		dcp_indicator_end(dcp);
 		dcp_indicator_commit(dcp, false);
@@ -268,31 +254,7 @@ int apple_dcp_camera_indicator_set(struct device *dev, bool on)
 }
 EXPORT_SYMBOL_GPL(apple_dcp_camera_indicator_set);
 
-bool apple_dcp_camera_indicator_lit(struct device *dev)
-{
-	struct apple_dcp *dcp = dev_get_drvdata(dev);
-	struct dcp_camera_indicator *ci;
-	bool lit, panel_lit;
-	unsigned long flags;
-	u32 nits;
-
-	if (!dcp || READ_ONCE(dcp->crashed))
-		return false;
-	ci = &dcp->camera_ind;
-
-	spin_lock_irqsave(&dcp->backlight.lock, flags);
-	panel_lit = dcp->backlight.state.ready && dcp_bl_lit(&dcp->backlight.state);
-	nits = dcp_bl_effective(&dcp->backlight.state);
-	spin_unlock_irqrestore(&dcp->backlight.lock, flags);
-
-	spin_lock_irqsave(&ci->lock, flags);
-	lit = dcp_ind_visible(&ci->state, panel_lit, nits);
-	spin_unlock_irqrestore(&ci->lock, flags);
-	return lit;
-}
-EXPORT_SYMBOL_GPL(apple_dcp_camera_indicator_lit);
-
-/* A completed present: checked every time, not only the first. */
+/* A completed present: the first one that carried the square confirms it. */
 void dcp_indicator_swap_done(struct apple_dcp *dcp, struct drm_framebuffer *slot_fb)
 {
 	struct dcp_camera_indicator *ci = &dcp->camera_ind;
@@ -302,34 +264,7 @@ void dcp_indicator_swap_done(struct apple_dcp *dcp, struct drm_framebuffer *slot
 		return;
 	spin_lock_irqsave(&ci->lock, flags);
 	dcp_ind_present_done(&ci->state, slot_fb && slot_fb == ci->fb);
-	if (ci->state.state != DCP_IND_PENDING)
+	if (ci->state.state == DCP_IND_LIT)
 		complete(&ci->presented);
 	spin_unlock_irqrestore(&ci->lock, flags);
-}
-
-/* A present failed or the pipe went off: the panel state is not known. */
-void dcp_indicator_swap_failed(struct apple_dcp *dcp)
-{
-	struct dcp_camera_indicator *ci = &dcp->camera_ind;
-	unsigned long flags;
-
-	if (!ci->has_surf)
-		return;
-	spin_lock_irqsave(&ci->lock, flags);
-	dcp_ind_present_failed(&ci->state);
-	complete(&ci->presented);
-	spin_unlock_irqrestore(&ci->lock, flags);
-}
-
-/* Colour management may not change while the square is up. */
-bool dcp_indicator_color_ok(struct apple_dcp *dcp, bool color_mgmt_changed)
-{
-	struct dcp_camera_indicator *ci = &dcp->camera_ind;
-	unsigned long flags;
-	bool ok;
-
-	spin_lock_irqsave(&ci->lock, flags);
-	ok = dcp_ind_color_change_ok(&ci->state, color_mgmt_changed);
-	spin_unlock_irqrestore(&ci->lock, flags);
-	return ok;
 }

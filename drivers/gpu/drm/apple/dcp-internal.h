@@ -1168,7 +1168,5 @@ int dcp_indicator_probe(struct apple_dcp *dcp);
 int dcp_indicator_attach_plane(struct apple_dcp *dcp, struct drm_device *drm,
 			       struct drm_plane *plane);
 void dcp_indicator_swap_done(struct apple_dcp *dcp, struct drm_framebuffer *slot_fb);
-void dcp_indicator_swap_failed(struct apple_dcp *dcp);
-bool dcp_indicator_color_ok(struct apple_dcp *dcp, bool color_mgmt_changed);
 
 #endif /* __APPLE_DCP_INTERNAL_H__ */

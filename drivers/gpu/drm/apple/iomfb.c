@@ -3343,7 +3343,6 @@ void iomfb_present_failed_h17p(struct apple_dcp *dcp)
 {
 	struct iomfb_transaction *transaction = dcp->iomfb.active;
 
-	dcp_indicator_swap_failed(dcp);
 	if (transaction && transaction->backlight_reserved) {
 		dcp_backlight_complete(dcp, transaction->backlight.sequence, false);
 		transaction->backlight_reserved = false;

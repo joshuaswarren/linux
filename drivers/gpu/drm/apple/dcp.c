@@ -1618,9 +1618,6 @@ int dcp_crtc_atomic_check(struct drm_crtc *crtc, struct drm_atomic_commit *commi
 
 	crtc_state = drm_atomic_get_new_crtc_state(commit, crtc);
 
-	if (!dcp_indicator_color_ok(dcp, crtc_state->color_mgmt_changed))
-		return -EBUSY;
-
 	/* External H17P does not program adaptive sync. */
 	if (dcp->hw.iomfb_method_profile ==
 	    DCP_IOMFB_METHODS_H17P_EXTERNAL &&
@@ -4099,7 +4096,6 @@ static void dcp_external_audio_init(struct apple_dcp *dcp)
 
 static void _dcp_poweroff(struct apple_dcp *dcp)
 {
-	dcp_indicator_swap_failed(dcp);
 	switch (dcp->fw_compat) {
 	case DCP_FIRMWARE_V_12_3:
 		iomfb_poweroff_v12_3(dcp);
