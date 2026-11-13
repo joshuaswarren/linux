@@ -18,6 +18,8 @@ struct apple_plane {
 	/* Reserved for the kernel camera indicator; userspace may not use it. */
 	bool indicator;
 	struct drm_framebuffer *indicator_fb;
+	/* The kernel commit in flight, compared by pointer only. */
+	const struct drm_atomic_commit *indicator_commit;
 };
 
 #define to_apple_plane(x) container_of(x, struct apple_plane, base)

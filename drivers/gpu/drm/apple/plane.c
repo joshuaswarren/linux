@@ -236,11 +236,31 @@ static int apple_plane_atomic_check(struct drm_plane *plane,
 
 	new_plane_state = drm_atomic_get_new_plane_state(commit, plane);
 
-	if (!dcp_ind_plane_ok(to_apple_plane(plane)->indicator,
-			      new_plane_state->fb &&
-			      new_plane_state->fb == to_apple_plane(plane)->indicator_fb,
-			      !!new_plane_state->fb))
-		return -EINVAL;
+	if (to_apple_plane(plane)->indicator) {
+		struct drm_plane_state *old = drm_atomic_get_old_plane_state(commit, plane);
+		struct drm_crtc_state *old_crtc_new = old->crtc ?
+			drm_atomic_get_new_crtc_state(commit, old->crtc) : NULL;
+		bool unchanged = new_plane_state->fb == old->fb &&
+				 new_plane_state->crtc == old->crtc &&
+				 new_plane_state->crtc_x == old->crtc_x &&
+				 new_plane_state->crtc_y == old->crtc_y &&
+				 new_plane_state->crtc_w == old->crtc_w &&
+				 new_plane_state->crtc_h == old->crtc_h &&
+				 new_plane_state->src_x == old->src_x &&
+				 new_plane_state->src_y == old->src_y &&
+				 new_plane_state->src_w == old->src_w &&
+				 new_plane_state->src_h == old->src_h &&
+				 new_plane_state->alpha == old->alpha &&
+				 new_plane_state->pixel_blend_mode == old->pixel_blend_mode &&
+				 new_plane_state->rotation == old->rotation;
+		bool going_off = !new_plane_state->fb && !new_plane_state->crtc &&
+				 old_crtc_new && !old_crtc_new->active;
+
+		if (!dcp_ind_plane_ok(true,
+				      commit == READ_ONCE(to_apple_plane(plane)->indicator_commit),
+				      unchanged, going_off))
+			return -EINVAL;
+	}
 
 	if (!new_plane_state->crtc)
 		return 0;

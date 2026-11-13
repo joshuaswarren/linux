@@ -47,15 +47,15 @@ static inline void dcp_ind_end(struct dcp_indicator *ind)
 }
 
 /*
- * The reserved plane accepts no userspace framebuffer. A disabled plane, or
- * the kernel's own framebuffer, is allowed.
+ * The reserved plane belongs to the kernel. A userspace commit may carry it
+ * only unchanged (a full-state modeset pulls every plane in), or disabled
+ * together with the CRTC it sits on (DPMS off, suspend, shutdown). Anything
+ * else, FB_ID=0 or CRTC_ID=0 included, would take the dot down.
  */
-static inline bool dcp_ind_plane_ok(bool reserved_plane, bool fb_is_indicator,
-				    bool has_fb)
+static inline bool dcp_ind_plane_ok(bool reserved_plane, bool kernel_commit,
+				    bool unchanged, bool crtc_going_off)
 {
-	if (!reserved_plane)
-		return true;
-	return !has_fb || fb_is_indicator;
+	return !reserved_plane || kernel_commit || unchanged || crtc_going_off;
 }
 
 #endif /* DCP_INDICATOR_H */

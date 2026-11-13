@@ -185,7 +185,9 @@ retry:
 			goto out;
 		drm_atomic_set_fb_for_plane(ps, NULL);
 	}
+	WRITE_ONCE(to_apple_plane(ci->plane)->indicator_commit, state);
 	ret = drm_atomic_commit(state);
+	WRITE_ONCE(to_apple_plane(ci->plane)->indicator_commit, NULL);
 out:
 	if (ret == -EDEADLK) {
 		drm_atomic_commit_clear(state);

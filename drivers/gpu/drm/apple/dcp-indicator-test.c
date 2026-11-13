@@ -60,16 +60,18 @@ static void indicator_single_owner(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, dcp_ind_begin(&ind), 0);
 }
 
-/* Only the kernel's own framebuffer may sit on the reserved plane. */
+/* Userspace cannot change the reserved plane, take it down or put its own on it. */
 static void indicator_plane_reservation(struct kunit *test)
 {
 	/* An ordinary plane is never restricted. */
-	KUNIT_EXPECT_TRUE(test, dcp_ind_plane_ok(false, true, false));
-	KUNIT_EXPECT_TRUE(test, dcp_ind_plane_ok(false, true, true));
-	/* The reserved plane: disabled or the kernel framebuffer only. */
-	KUNIT_EXPECT_TRUE(test, dcp_ind_plane_ok(true, false, false));
-	KUNIT_EXPECT_TRUE(test, dcp_ind_plane_ok(true, true, true));
-	KUNIT_EXPECT_FALSE(test, dcp_ind_plane_ok(true, false, true));
+	KUNIT_EXPECT_TRUE(test, dcp_ind_plane_ok(false, false, false, false));
+	/* The kernel's own commit may do anything. */
+	KUNIT_EXPECT_TRUE(test, dcp_ind_plane_ok(true, true, false, false));
+	/* Userspace: carried unchanged, or disabled with its CRTC. */
+	KUNIT_EXPECT_TRUE(test, dcp_ind_plane_ok(true, false, true, false));
+	KUNIT_EXPECT_TRUE(test, dcp_ind_plane_ok(true, false, false, true));
+	/* Any other userspace change (own fb, FB_ID=0, CRTC_ID=0, move) fails. */
+	KUNIT_EXPECT_FALSE(test, dcp_ind_plane_ok(true, false, false, false));
 }
 
 static struct kunit_case indicator_cases[] = {
