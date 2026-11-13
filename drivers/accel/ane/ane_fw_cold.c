@@ -1335,7 +1335,7 @@ static int ane_fw_prepare(struct ane_fw_backend *b)
 			      IOMMU_READ | IOMMU_WRITE, &b->pool);
 	if (ret)
 		return ret;
-	ret = ane_fw_alloc_at(b, ANE_FW_IPC_DVA, SZ_64K,
+	ret = ane_fw_alloc_at(b, ANE_FW_IPC_DVA, ANE_FW_HEAP_DVA - ANE_FW_IPC_DVA,
 			      IOMMU_READ | IOMMU_WRITE, &b->ipc);
 	if (ret)
 		return ret;
@@ -1356,7 +1356,8 @@ static int ane_fw_boot(struct ane_fw_backend *b)
 {
 	void __iomem *scratch = b->engine + b->soc->scratch;
 	u8 *init = b->pool.cpu + 0x180;
-	u64 table;
+	u64 table, ipc_bytes;
+	u32 req[5];
 	unsigned int i;
 	int ret;
 
@@ -1372,15 +1373,17 @@ static int ane_fw_boot(struct ane_fw_backend *b)
 	if (ret)
 		return ret;
 	dev_info(&b->pdev->dev, "ANE boot: READY\n");
-	if (ane_rd32(b, scratch) != 8 || ane_rd32(b, scratch + 4) != 0xc440 ||
-	    ane_rd32(b, scratch + 12) != 0xf00000 || ane_rd32(b, scratch + 16))
-		return -EPROTO;
+	for (i = 0; i < ARRAY_SIZE(req); i++)
+		req[i] = ane_rd32(b, scratch + i * 4);
+	ret = ane_fw_boot_request(req, b->ipc.size, &ipc_bytes);
+	if (ret)
+		return ret;
 	put_unaligned_le64(b->ipc.dva, init + 8);
 	put_unaligned_le64(ANE_FW_SPAN, init + 0x10);
 	put_unaligned_le64(0xfc80000, init + 0x18);
 	put_unaligned_le64(b->heap.dva, init + 0x20);
 	put_unaligned_le64(b->heap.size, init + 0x28);
-	put_unaligned_le64(0xc441, init + 0x50);
+	put_unaligned_le64(ipc_bytes, init + 0x50);
 	put_unaligned_le64(b->pool.dva, init + 0x58);
 	put_unaligned_le64(b->pool.size, init + 0x60);
 	put_unaligned_le32(64, init + 0x68);

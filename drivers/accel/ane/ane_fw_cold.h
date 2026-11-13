@@ -136,6 +136,22 @@ static inline int ane_fw_heap_tail(const u64 dva[2], const u64 size[2], u64 limi
 	return 0;
 }
 
+/*
+ * What the firmware asks for when it reports READY (scratch 0..4: channels, IPC
+ * bytes minus one, heap bytes, mode). The IPC size differs between firmware builds,
+ * so it is bounded by the room the host reserves (ipc_max) and returned, not matched.
+ */
+static inline int ane_fw_boot_request(const u32 req[5], u64 ipc_max, u64 *ipc_bytes)
+{
+	u64 ipc = (u64)req[1] + 1;
+
+	if (req[0] != ANE_FW_CHANNELS || req[3] != 0xf00000 || req[4] ||
+	    ipc < ANE_FW_TABLE_SIZE || ipc > ipc_max)
+		return -EPROTO;
+	*ipc_bytes = ipc;
+	return 0;
+}
+
 /* The exact /chosen/apple,ane-cold-boot value a raw loader boot publishes. */
 #define ANE_FW_COLD_BOOT_EVIDENCE "raw-no-xnu-ane-untouched-v1"
 

@@ -365,6 +365,41 @@ static void ane_cold_no_clpc_test(struct kunit *test)
 #endif
 }
 
+/*
+ * The firmware states what it needs in scratch 0..4 when it reports READY:
+ * channels, IPC bytes minus one, heap bytes, mode. The M5 Pro build asks for
+ * 0xc441 IPC bytes, the M5 Max build for 0x10441; the gap to the heap is 0x14000.
+ */
+static void ane_cold_boot_request_test(struct kunit *test)
+{
+	const u32 j714s[5] = { 8, 0xc440, 0x100, 0xf00000, 0 };
+	const u32 k114c[5] = { 8, 0x10440, 0x100, 0xf00000, 0 };
+	u32 bad[5];
+	u64 ipc;
+
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(j714s, 0x14000, &ipc), 0);
+	KUNIT_EXPECT_EQ(test, ipc, 0xc441ULL);
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(k114c, 0x14000, &ipc), 0);
+	KUNIT_EXPECT_EQ(test, ipc, 0x10441ULL);
+
+	memcpy(bad, k114c, sizeof(bad));
+	bad[1] = 0x13fff;	/* 0x14000 bytes fit exactly */
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(bad, 0x14000, &ipc), 0);
+	bad[1] = 0x14000;	/* one byte more than the gap */
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(bad, 0x14000, &ipc), -EPROTO);
+	bad[1] = 0x7fe;	/* one byte below the eight 0x100-byte descriptors */
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(bad, 0x14000, &ipc), -EPROTO);
+	memcpy(bad, k114c, sizeof(bad));
+	bad[0] = 7;
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(bad, 0x14000, &ipc), -EPROTO);
+	memcpy(bad, k114c, sizeof(bad));
+	bad[3] = 0xf04000;
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(bad, 0x14000, &ipc), -EPROTO);
+	memcpy(bad, k114c, sizeof(bad));
+	bad[4] = 1;
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(bad, 0x14000, &ipc), -EPROTO);
+}
+
 static struct kunit_case ane_cold_cases[] = {
 	KUNIT_CASE(ane_cold_no_clpc_test),
 	KUNIT_CASE(ane_cold_restartable_test),
@@ -378,6 +413,7 @@ static struct kunit_case ane_cold_cases[] = {
 	KUNIT_CASE(ane_cold_warm_test),
 	KUNIT_CASE(ane_cold_dart_test),
 	KUNIT_CASE(ane_cold_command_policy_test),
+	KUNIT_CASE(ane_cold_boot_request_test),
 	{}
 };
 
