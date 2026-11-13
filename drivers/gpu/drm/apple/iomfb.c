@@ -43,6 +43,7 @@
 #include "iomfb_m4.h"
 #include "parser.h"
 #include "trace.h"
+#include "iomfb_v27_3_swap.h"
 #include "iomfb_v27_3_tags.h"
 
 struct dcp_identity_trace {
@@ -948,6 +949,7 @@ static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 			     u32 out_len, void *data, dcp_callback_t cb, void *cookie)
 {
 	struct dcp_method_entry resolved = *call;
+	u8 *swap_27_3 = NULL;
 
 #if IS_ENABLED(CONFIG_DRM_APPLE_KUNIT_TEST)
 	/* A KUnit test answers for the firmware. */
@@ -966,6 +968,17 @@ static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 	if (dcp->tags_27_3) {
 		const char *tag_27_3 = dcp_v27_3_tag(resolved.tag);
 
+		/* The 27.3 swap request is a different size than the 27.0 one */
+		if (!memcmp(call->tag, "A408", 4) && in_len == DCP_V27_REQ_SIZE) {
+			swap_27_3 = kmalloc(DCP_V27_3_REQ_SIZE, GFP_ATOMIC);
+			if (!swap_27_3) {
+				WRITE_ONCE(dcp->crashed, true);
+				return;
+			}
+			dcp_v27_3_swap_req(swap_27_3, data);
+			data = swap_27_3;
+			in_len = DCP_V27_3_REQ_SIZE;
+		}
 		if (tag_27_3)
 			memcpy(resolved.tag, tag_27_3, sizeof(resolved.tag));
 	}
@@ -973,6 +986,7 @@ static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 		u8 zero[64] = {};
 
 		dev_info(dcp->dev, "dcp-probe: skipped %.4s\n", resolved.tag);
+		kfree(swap_27_3);
 		if (out_len <= sizeof(zero) && cb)
 			cb(dcp, zero, cookie);
 		return;
@@ -1018,6 +1032,7 @@ static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 			       DCP_PACKET_ALIGNMENT))) {
 		dev_err(dcp->dev, "invalid IOMFB command envelope\n");
 		WRITE_ONCE(dcp->crashed, true);
+		kfree(swap_27_3);
 		return;
 	}
 	depth = dcp_push_depth(&ch->depth);
@@ -1031,6 +1046,7 @@ static void dcp_push_context(struct apple_dcp *dcp, enum dcp_context_id context,
 
 	if (in_len > 0)
 		memcpy(out_data, data, in_len);
+	kfree(swap_27_3);
 	/* An unwritten status must not look like a successful response. */
 	if (out_len)
 		memset(out_data + in_len, 0xff, out_len);
