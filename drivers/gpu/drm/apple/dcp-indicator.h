@@ -54,6 +54,19 @@ static inline void dcp_ind_present_failed(struct dcp_indicator *ind)
 		ind->state = DCP_IND_FAILED;
 }
 
+/*
+ * Every completed present: dot_shown says whether the present carried the
+ * kernel's dot. The first one that does lights it; any later one that does not
+ * (plane disabled, clipped by a mode change, fbdev restore) fails it.
+ */
+static inline void dcp_ind_present_done(struct dcp_indicator *ind, bool dot_shown)
+{
+	if (ind->state == DCP_IND_PENDING && dot_shown)
+		ind->state = DCP_IND_LIT;
+	else if (ind->state == DCP_IND_LIT && !dot_shown)
+		ind->state = DCP_IND_FAILED;
+}
+
 static inline void dcp_ind_end(struct dcp_indicator *ind)
 {
 	ind->state = DCP_IND_OFF;

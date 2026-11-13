@@ -4099,6 +4099,7 @@ static void dcp_external_audio_init(struct apple_dcp *dcp)
 
 static void _dcp_poweroff(struct apple_dcp *dcp)
 {
+	dcp_indicator_swap_failed(dcp);
 	switch (dcp->fw_compat) {
 	case DCP_FIRMWARE_V_12_3:
 		iomfb_poweroff_v12_3(dcp);

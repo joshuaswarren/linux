@@ -276,7 +276,7 @@ bool apple_dcp_camera_indicator_lit(struct device *dev)
 	unsigned long flags;
 	u32 nits;
 
-	if (!dcp)
+	if (!dcp || READ_ONCE(dcp->crashed))
 		return false;
 	ci = &dcp->camera_ind;
 
@@ -292,7 +292,7 @@ bool apple_dcp_camera_indicator_lit(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(apple_dcp_camera_indicator_lit);
 
-/* A completed present: lit when it carried the square. */
+/* A completed present: checked every time, not only the first. */
 void dcp_indicator_swap_done(struct apple_dcp *dcp, struct drm_framebuffer *slot_fb)
 {
 	struct dcp_camera_indicator *ci = &dcp->camera_ind;
@@ -301,10 +301,9 @@ void dcp_indicator_swap_done(struct apple_dcp *dcp, struct drm_framebuffer *slot
 	if (!ci->has_surf)
 		return;
 	spin_lock_irqsave(&ci->lock, flags);
-	if (ci->state.state == DCP_IND_PENDING && slot_fb && slot_fb == ci->fb) {
-		dcp_ind_presented(&ci->state, true);
+	dcp_ind_present_done(&ci->state, slot_fb && slot_fb == ci->fb);
+	if (ci->state.state != DCP_IND_PENDING)
 		complete(&ci->presented);
-	}
 	spin_unlock_irqrestore(&ci->lock, flags);
 }
 

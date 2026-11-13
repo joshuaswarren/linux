@@ -59,6 +59,31 @@ static void indicator_present_failure_while_lit(struct kunit *test)
 	KUNIT_EXPECT_TRUE(test, dcp_ind_active(&ind));
 }
 
+/* Every completed present is checked: a present without the dot ends LIT. */
+static void indicator_present_done_rechecks(struct kunit *test)
+{
+	struct dcp_indicator ind = {};
+
+	KUNIT_ASSERT_EQ(test, dcp_ind_begin(&ind), 0);
+	/* An unrelated present while pending does not decide anything. */
+	dcp_ind_present_done(&ind, false);
+	KUNIT_EXPECT_EQ(test, ind.state, DCP_IND_PENDING);
+	dcp_ind_present_done(&ind, true);
+	KUNIT_EXPECT_EQ(test, ind.state, DCP_IND_LIT);
+	dcp_ind_present_done(&ind, true);
+	KUNIT_EXPECT_TRUE(test, dcp_ind_visible(&ind, true, 500));
+	/* Plane disabled, clipped out by a mode change, or fbdev restore. */
+	dcp_ind_present_done(&ind, false);
+	KUNIT_EXPECT_EQ(test, ind.state, DCP_IND_FAILED);
+	KUNIT_EXPECT_FALSE(test, dcp_ind_visible(&ind, true, 500));
+	dcp_ind_present_done(&ind, true);
+	KUNIT_EXPECT_EQ(test, ind.state, DCP_IND_FAILED);
+	/* An idle indicator ignores presents. */
+	dcp_ind_end(&ind);
+	dcp_ind_present_done(&ind, false);
+	KUNIT_EXPECT_EQ(test, ind.state, DCP_IND_OFF);
+}
+
 /* One owner at a time: a second request cannot reset a running stream. */
 static void indicator_single_owner(struct kunit *test)
 {
@@ -145,6 +170,7 @@ static struct kunit_case indicator_cases[] = {
 	KUNIT_CASE(indicator_lit_only_after_present),
 	KUNIT_CASE(indicator_failed_present_never_lit),
 	KUNIT_CASE(indicator_present_failure_while_lit),
+	KUNIT_CASE(indicator_present_done_rechecks),
 	KUNIT_CASE(indicator_single_owner),
 	KUNIT_CASE(indicator_visibility_conditions),
 	KUNIT_CASE(indicator_plane_reservation),
