@@ -540,7 +540,7 @@ static struct device *apple_isp_indicator_dcp(struct device *dev)
 		return NULL;
 	dcp = of_find_device_by_node(np);
 	of_node_put(np);
-	if (!dcp || !dcp->dev.driver) {
+	if (!dcp || !device_is_bound(&dcp->dev)) {
 		if (dcp)
 			put_device(&dcp->dev);
 		return ERR_PTR(-EPROBE_DEFER);
@@ -780,6 +780,7 @@ destroy_wq:
 detach_genpd:
 	apple_isp_detach_genpd(isp);
 free_isp:
+	put_device(isp->dcp);
 	kfree(isp->sensor_configs);
 	/* Nothing else can reach it before the video device is registered. */
 	kfree(isp);

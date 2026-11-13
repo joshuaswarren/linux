@@ -1339,8 +1339,11 @@ int apple_isp_start_capture(struct apple_isp *isp)
 	}
 
 	err = apple_isp_light_on(isp);
-	if (err)
+	if (err) {
+		if (apple_isp_camera_indicator(isp))
+			apple_isp_dcp_indicator_set(isp->dcp, false);
 		return err;
+	}
 
 	/* Serviced from before the channel starts... */
 	apple_isp_wdt_start(isp);
