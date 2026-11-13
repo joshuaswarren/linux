@@ -1185,6 +1185,7 @@ static bool apple_isp_dcp_indicator_lit(struct device *dcp);
 
 static void apple_isp_wdt_kick(struct apple_isp *isp)
 {
+	KUNIT_STATIC_STUB_REDIRECT(apple_isp_wdt_kick, isp);
 	writel(0, isp->wdt + ISP_WDT_CLEAR);
 	writel(ISP_WDT_RELOAD_VAL, isp->wdt + ISP_WDT_RELOAD);
 	writel(1, isp->wdt + ISP_WDT_KICK);
