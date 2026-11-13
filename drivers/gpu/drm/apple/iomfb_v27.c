@@ -138,6 +138,11 @@ static bool trampoline_rt_bandwidth_h17p(struct apple_dcp *dcp, int tag,
 	return true;
 }
 
+/* Probe: rate answered for a clock the DT does not declare; 0 keeps the old reply. */
+static unsigned long w86_undeclared_clk_hz;
+module_param_named(w86_undeclared_clk_hz, w86_undeclared_clk_hz, ulong, 0644);
+MODULE_PARM_DESC(w86_undeclared_clk_hz, "Rate (Hz) answered for an undeclared DCP provider clock");
+
 static bool trampoline_get_frequency_v27(struct apple_dcp *dcp, int tag,
 					void *out, void *in)
 {
@@ -145,11 +150,15 @@ static bool trampoline_get_frequency_v27(struct apple_dcp *dcp, int tag,
 	u32 index = le32_to_cpu(request->clock_id);
 	u64 rate = 0;
 
-	if (index < dcp->num_firmware_clocks)
+	if (index < dcp->num_firmware_clocks) {
 		rate = clk_get_rate(dcp->firmware_clocks[index].clk);
-	else
+	} else {
+		rate = w86_undeclared_clk_hz;
 		dev_err(dcp->dev, "DCP requested undeclared provider clock index %u\n",
 			index);
+	}
+	dev_info(dcp->dev, "w86-clk: D408 index %u declared %u -> %llu Hz\n",
+		 index, dcp->num_firmware_clocks, rate);
 	*(__le64 *)out = cpu_to_le64(rate);
 	return true;
 }
@@ -459,12 +468,12 @@ static const iomfb_cb_handler cb_handlers[IOMFB_MAX_CB] = {
 	[102] = w86_set_nop,
 	[104] = w86_set_nop,
 	[106] = trampoline_nop,
-	[107] = trampoline_true,
-	[108] = trampoline_true,
-	[109] = trampoline_true,
-	[110] = trampoline_true,
-	[111] = trampoline_create_backlight_service,
-	[112] = trampoline_true,
+	[107] = iomfbep_cb_w86_service,
+	[108] = iomfbep_cb_w86_service,
+	[109] = iomfbep_cb_w86_service,
+	[110] = iomfbep_cb_w86_service,
+	[111] = iomfbep_cb_w86_service,
+	[112] = iomfbep_cb_w86_service,
 	[113] = dcpep_cb_core_analytics_v27,
 	[116] = trampoline_nop,
 	[117] = trampoline_zero,

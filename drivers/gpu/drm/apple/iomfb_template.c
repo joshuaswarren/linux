@@ -518,6 +518,28 @@ DCP_THUNK_INOUT(dcp_pipe_cfg_415, dcpep_pipe_cfg_415,
 		struct dcp_pipe_cfg_415, struct dcp_pipe_cfg_415);
 DCP_THUNK_IN(dcp_pipe_cfg_031, dcpep_pipe_cfg_031, struct dcp_pipe_cfg_031);
 DCP_THUNK_INOUT(dcp_pipe_cfg_414, dcpep_pipe_cfg_414, u64, u64);
+
+/*
+ * A352 sets one pipe property: key u32, value u32, answer u32.  macOS 27.3
+ * sets the panel level with key 0x14 and the nits in 16.16 fixed point.
+ */
+#if (DCP_FW_H17(DCP_FW_VER) && DCP_FW_VER >= DCP_FW_VERSION(27, 0, 0))
+struct dcp_pipe_set_352_req {
+	__le32 key;
+	__le32 value;
+} __packed;
+DCP_THUNK_INOUT(dcp_pipe_set_352, dcpep_pipe_set_352, struct dcp_pipe_set_352_req, u32);
+
+static void dcp_started_next(struct apple_dcp *dcp, void *data, void *cookie);
+
+static void dcp_a352_7c_second(struct apple_dcp *dcp, void *out, void *cookie)
+{
+	struct dcp_pipe_set_352_req req = { .key = cpu_to_le32(0x7c), .value = cpu_to_le32(1) };
+
+	dev_info(dcp->dev, "w86-a352: key 0x7c value 0 answered, sending value 1\n");
+	dcp_pipe_set_352(dcp, false, &req, dcp_started_next, cookie);
+}
+#endif
 DCP_THUNK_OUT(dcp_pipe_query_478, dcpep_pipe_query_478, u32);
 DCP_THUNK_OUT(dcp_pipe_query_474, dcpep_pipe_query_474, u32);
 DCP_THUNK_IN(dcp_pipe_set_476, dcpep_pipe_set_476, u32);
@@ -883,6 +905,7 @@ static void complete_pmu_service_matched(struct apple_dcp *dcp, void *out, void 
 
 	*succ = true;
 
+	dev_info(dcp->dev, "w86-svc: A136 pmu_service_matched done\n");
 	// ack D206 cb_match_pmu_service_2
 	dcp_ack(dcp, DCP_CONTEXT_CB);
 }
@@ -890,6 +913,7 @@ static void complete_pmu_service_matched(struct apple_dcp *dcp, void *out, void 
 static bool iomfbep_cb_match_pmu_service_2(struct apple_dcp *dcp, int tag, void *out, void *in)
 {
 	trace_iomfb_callback(dcp, tag, __func__);
+	dev_info(dcp->dev, "w86-svc: D206 match_pmu_service_2 -> send A136\n");
 
 	iomfb_a131_pmu_service_matched(dcp, false, complete_pmu_service_matched,
 				       out);
@@ -905,6 +929,7 @@ static void complete_backlight_service_matched(struct apple_dcp *dcp, void *out,
 
 	*succ = true;
 
+	dev_info(dcp->dev, "w86-svc: A137 backlight_service_matched done\n");
 	// ack D206 cb_match_backlight_service
 	dcp_ack(dcp, DCP_CONTEXT_CB);
 }
@@ -912,6 +937,8 @@ static void complete_backlight_service_matched(struct apple_dcp *dcp, void *out,
 static bool iomfbep_cb_match_backlight_service(struct apple_dcp *dcp, int tag, void *out, void *in)
 {
 	trace_iomfb_callback(dcp, tag, __func__);
+	dev_info(dcp->dev, "w86-svc: D207 match_backlight_service has_panel=%d\n",
+		 dcp_has_panel(dcp));
 
 	if (!dcp_has_panel(dcp)) {
 		u8 *succ = out;
@@ -3121,6 +3148,20 @@ TRAMPOLINE_INOUT(trampoline_set_tiling_state_v26_6, dcpep_cb_set_tiling_state_v2
 #endif
 TRAMPOLINE_OUT(trampoline_create_backlight_service, dcpep_cb_create_backlight_service, u8);
 
+#if DCP_FW_H17(DCP_FW_VER)
+/* D107..D112: the firmware asks whether the AP published a service; log each reply. */
+static bool iomfbep_cb_w86_service(struct apple_dcp *dcp, int tag, void *out, void *in)
+{
+	u8 *succ = out;
+	bool reply = tag == 111 ? dcpep_cb_create_backlight_service(dcp) : true;
+
+	*succ = reply;
+	dev_info(dcp->dev, "w86-svc: D%d service reply %d (has_panel %d connector_type %d)\n",
+		 tag, reply, dcp_has_panel(dcp), dcp->connector_type);
+	return true;
+}
+#endif
+
 /*
  * Swap timestamps are in the firmware's continuous time. Firmware 27 counts
  * it at 24 MHz, while the ARM counter Linux reads may run faster (1 GHz on
@@ -4458,7 +4499,7 @@ static void init_1(struct apple_dcp *dcp, void *out, void *cookie)
 }
 #endif
 
-static void dcp_started(struct apple_dcp *dcp, void *data, void *cookie)
+static void dcp_started_next(struct apple_dcp *dcp, void *data, void *cookie)
 {
 	struct iomfb_get_color_remap_mode_req color_remap =
 		(struct iomfb_get_color_remap_mode_req){
@@ -4468,6 +4509,20 @@ static void dcp_started(struct apple_dcp *dcp, void *data, void *cookie)
 	dev_info(dcp->dev, "DCP booted\n");
 
 	iomfb_get_color_remap_mode(dcp, false, &color_remap, init_1, cookie);
+}
+
+static void dcp_started(struct apple_dcp *dcp, void *data, void *cookie)
+{
+#if (DCP_FW_H17(DCP_FW_VER) && DCP_FW_VER >= DCP_FW_VERSION(27, 0, 0))
+	if (dcp_a352_enable_7c && dcp->tags_27_3 && dcp_has_panel(dcp)) {
+		struct dcp_pipe_set_352_req req = { .key = cpu_to_le32(0x7c) };
+
+		dev_info(dcp->dev, "w86-a352: key 0x7c value 0 before the first swap\n");
+		dcp_pipe_set_352(dcp, false, &req, dcp_a352_7c_second, cookie);
+		return;
+	}
+#endif
+	dcp_started_next(dcp, data, cookie);
 }
 
 void DCP_FW_NAME(iomfb_shutdown)(struct apple_dcp *dcp)

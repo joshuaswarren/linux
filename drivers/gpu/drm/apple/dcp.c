@@ -207,7 +207,12 @@ bool dcp_h17p_external_ready(struct device_node *np)
 
 static bool show_notch;
 module_param(show_notch, bool, 0644);
+
 MODULE_PARM_DESC(show_notch, "Use the full display height and show the notch (also when /chosen/asahi,show-notch is \"1\")");
+
+bool dcp_a352_enable_7c;
+module_param_named(a352_enable_7c, dcp_a352_enable_7c, bool, 0644);
+MODULE_PARM_DESC(a352_enable_7c, "send A352 key 0x7c value 0 then 1 at boot, before the first swap (27.3 probe)");
 
 /*
  * DP/HDMI audio of external displays, on by default as on macOS: a display

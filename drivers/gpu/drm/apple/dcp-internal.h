@@ -1117,6 +1117,8 @@ static inline bool dcp_is_v14_7_panel(const struct apple_dcp *dcp)
 /* Native external pipe: start its audio endpoint, once, after the first EDID. */
 void dcp_external_audio_start(struct apple_dcp *dcp);
 
+extern bool dcp_a352_enable_7c;
+
 /*
  * The T8122 dcpext connects its DPTX port as AsahiLinux/linux#607 does,
  * the kernel this firmware was first driven with: no validation of the
