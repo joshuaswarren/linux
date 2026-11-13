@@ -555,6 +555,8 @@ struct apple_dcp {
 	struct list_head iomfb_boolean_properties;
 	u32 iomfb_boolean_property_count;
 	u32 external_pipes_v27, external_displays_v27, external_suppression_v27;
+	/* SDR white in nits of the present being built (H17P backlight) */
+	u32 edr_present_sdr;
 	struct dcp_swap_submit_req_v27 present_v27;
 	/* Both paired wire records belong to the primary endpoint lock. */
 	struct dcp_swap_submit_req_v27 peer_present_v27;

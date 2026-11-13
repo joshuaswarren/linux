@@ -3235,6 +3235,18 @@ static void dcp_swapped(struct apple_dcp *dcp, void *data, void *cookie)
 	dcp->swap_start = ktime_get();
 	dcp->swap_submit_timestamp = dcp_swap_time();
 	dcp_swap_watchdog_arm(dcp);
+#if (DCP_FW_H17(DCP_FW_VER) && DCP_FW_VER >= DCP_FW_VERSION(27, 0, 0))
+	if (dcp->tags_27_3 && dcp_has_panel(dcp) &&
+	    dcp->present_v27.swap.brightness_update) {
+		struct dcp_pipe_set_352_req req = {
+			.key = cpu_to_le32(0x14),
+			.value = cpu_to_le32(dcp->edr_present_sdr << 16),
+		};
+
+		dev_info(dcp->dev, "w86-a352: key 0x14 nits %u\n", dcp->edr_present_sdr);
+		dcp_pipe_set_352(dcp, false, &req, NULL, NULL);
+	}
+#endif
 }
 
 #if (DCP_FW_H17(DCP_FW_VER) && DCP_FW_VER >= DCP_FW_VERSION(27, 0, 0))
