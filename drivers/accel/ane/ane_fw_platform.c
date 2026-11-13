@@ -63,7 +63,7 @@ static const u8 ane_t6050_text_pin_k114c[] = {
 
 static const struct ane_fw_preload_layout ane_t6050_more_layouts[] = {
 	{
-		.dva = { 0x10000000000, 0x1000ec000 },
+		.dva = { 0x10000000000, 0x100000ec000 },
 		.size = { 0xec000, 0x280000 },
 		.text_pin = ane_t6050_text_pin_k114c,
 	},

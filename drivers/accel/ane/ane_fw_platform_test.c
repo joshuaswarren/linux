@@ -49,7 +49,7 @@ static void ane_t6050_preload_layouts_test(struct kunit *test)
 	const struct ane_fw_platform *soc = &ane_t6050_platform;
 	u64 phys[] = { 0x10000de8000, 0x100022c4000 };
 	u64 j714s_size[] = { 0xc0000, 0x2ac000 }, j714s_dva[] = { 0x10000000000, 0x100000c0000 };
-	u64 k114c_size[] = { 0xec000, 0x280000 }, k114c_dva[] = { 0x10000000000, 0x1000ec000 };
+	u64 k114c_size[] = { 0xec000, 0x280000 }, k114c_dva[] = { 0x10000000000, 0x100000ec000 };
 	u64 mixed_size[] = { 0xec000, 0x2ac000 };
 	const u8 *pin;
 
