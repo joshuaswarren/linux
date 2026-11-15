@@ -352,6 +352,8 @@ static void dcp_edr_prepare_v27(struct apple_dcp *dcp, struct dcp_swap_v27 *swap
 
 	dcp->edr_restart = false;
 	WRITE_ONCE(dcp->edr_ramping, false);
+	if (dcp->output_edr && !sdr)
+		dev_info_ratelimited(dcp->dev, "edr: PQ on but SDR white is 0, no EDR step\n");
 	if ((!dcp->output_edr && !dcp->edr_hm) || !sdr)
 		return;
 	cap = dcp_edr_target(READ_ONCE(dcp->panel.peak_nits), sdr, dcp->panel.edr_ceiling);
@@ -370,6 +372,9 @@ static void dcp_edr_prepare_v27(struct apple_dcp *dcp, struct dcp_swap_v27 *swap
 	next = dcp_edr_next_timed(cur, target, cap, prev_sdr, sdr, us);
 	dcp->edr_step = now;
 	bri = (u64)sdr * next / DCP_EDR_UNITY;
+	dev_info(dcp->dev, "edr: sdr %u cur %u next %u target %u cap %u peak %u bri %llu restart %d out %d\n",
+		 sdr, cur, next, target, cap, (unsigned int)READ_ONCE(dcp->panel.peak_nits),
+		 bri, restart, dcp->output_edr);
 	swap->brightness_update = 1;
 	swap->brightness_nits = dcp_binary64_ratio(bri, 1);
 	swap->bl_flags[2] = 1;
