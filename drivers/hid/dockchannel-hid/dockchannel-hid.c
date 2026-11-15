@@ -596,10 +596,8 @@ static int dchid_register_ring(struct dockchannel_hid *dchid)
 	};
 	/* Observed in both macOS and standalone T8132 bringup before 0x91. */
 	u8 prepare[] = { 0xc1, 0x02 };
-	int ret = 0;
-	bool refused;
-	bool *registered = &dchid->ring_registered;
-	int *error = &dchid->ring_error;
+	int ret = 0, cmd_ret;
+	bool fifo_fallback = !dchid->use_ring;
 
 	if (!dchid->use_rx_ring)
 		return 0;
@@ -607,25 +605,28 @@ static int dchid_register_ring(struct dockchannel_hid *dchid)
 	mutex_lock(&dchid->ring_mutex);
 	ret = dchid->ring_error;
 	if (!dchid->ring_registered) {
-		int cmd_ret = dchid_comm_cmd(dchid, prepare, sizeof(prepare));
-
-		/* The registration ACK itself arrives through the ring. */
-		dma_wmb();
-		ret = dchid_ring_registration_result(cmd_ret, registered,
-						     error, &refused);
-		if (refused) {
-			dev_warn(dchid->dev,
-				 "receive ring refused (%d), staying on FIFO\n", cmd_ret);
-			goto unlock;
+		cmd_ret = dchid_comm_cmd(dchid, prepare, sizeof(prepare));
+		if (cmd_ret >= 0) {
+			/* The registration ACK itself arrives through the ring. */
+			dma_wmb();
+			WRITE_ONCE(dchid->ring_registered, true);
+			cmd_ret = dchid_comm_cmd(dchid, &msg, sizeof(msg));
+			dchid->ring_error = cmd_ret;
 		}
-		cmd_ret = dchid_comm_cmd(dchid, &msg, sizeof(msg));
-		ret = dchid_ring_registration_result(cmd_ret, registered,
-						     error, &refused);
-		if (refused)
+		ret = cmd_ret;
+		if (dchid_ring_refused(cmd_ret, fifo_fallback)) {
+			/*
+			 * Stay on the FIFO. Keep the ring marked registered, so a
+			 * ring the firmware did accept still drains, and clear the
+			 * sticky error so later interface starts do not fail.
+			 */
+			WRITE_ONCE(dchid->ring_registered, true);
+			dchid->ring_error = 0;
 			dev_warn(dchid->dev,
 				 "receive ring refused (%d), staying on FIFO\n", cmd_ret);
+			ret = 0;
+		}
 	}
-unlock:
 	mutex_unlock(&dchid->ring_mutex);
 	return ret;
 }
