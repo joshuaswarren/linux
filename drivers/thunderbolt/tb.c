@@ -2783,9 +2783,14 @@ static void tb_dp_rebuild_work(struct work_struct *work)
 	struct tb *tb = r->tb;
 	struct tb_cm *tcm = tb_priv(tb);
 	struct tb_tunnel *tunnel;
+	bool rebuilt = false;
+	int ret;
 
-	if (pm_runtime_resume_and_get(&tb->dev) < 0)
+	ret = pm_runtime_resume_and_get(&tb->dev);
+	if (ret < 0) {
+		tb_warn(tb, "DP tunnel rebuild: the domain did not resume (%d)\n", ret);
 		goto out;
+	}
 
 	mutex_lock(&tb->lock);
 	if (tcm->hotplug_active && tb->root_switch) {
@@ -2796,10 +2801,14 @@ static void tb_dp_rebuild_work(struct work_struct *work)
 				continue;
 			tb_dp_host_relink(tb, tunnel, tunnel->host_rate_limit,
 					  "display link lost");
+			rebuilt = true;
 			break;
 		}
 	}
 	mutex_unlock(&tb->lock);
+	if (!rebuilt)
+		tb_warn(tb, "DP tunnel rebuild: no host DP tunnel on adapter %u with generation %llu, nothing rebuilt\n",
+			r->in_port, r->generation);
 
 	pm_runtime_mark_last_busy(&tb->dev);
 	pm_runtime_put_autosuspend(&tb->dev);
