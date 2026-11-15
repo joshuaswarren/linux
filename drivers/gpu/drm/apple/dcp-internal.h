@@ -563,6 +563,8 @@ struct apple_dcp {
 	u32 external_pipes_v27, external_displays_v27, external_suppression_v27;
 	/* SDR white in nits of the present being built (H17P backlight) */
 	u32 edr_present_sdr;
+	/* panel nits of the EDR step being sent (SDR white x headroom), 0 outside EDR */
+	u32 edr_a352_nits;
 	/* A400/A379 client-open queries sent once before the first A352 */
 	bool w86_client_open_queries_sent;
 	/* last nonzero A352 key 0x14 value, used instead of 0 while the pipe is on */
@@ -1155,6 +1157,7 @@ static inline bool dcp_is_v14_7_panel(const struct apple_dcp *dcp)
 void dcp_external_audio_start(struct apple_dcp *dcp);
 
 extern bool dcp_a352_enable_7c;
+extern bool dcp_edr_a352_scaled;
 extern unsigned int dcp_swap_ts_mode;
 extern unsigned int dcp_keepalive_ms;
 extern bool dcp_swap_band_hold;

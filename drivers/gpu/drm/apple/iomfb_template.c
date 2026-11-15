@@ -354,8 +354,10 @@ static void dcp_edr_prepare_v27(struct apple_dcp *dcp, struct dcp_swap_v27 *swap
 	WRITE_ONCE(dcp->edr_ramping, false);
 	if (dcp->output_edr && !sdr)
 		dev_info_ratelimited(dcp->dev, "edr: PQ on but SDR white is 0, no EDR step\n");
-	if ((!dcp->output_edr && !dcp->edr_hm) || !sdr)
+	if ((!dcp->output_edr && !dcp->edr_hm) || !sdr) {
+		dcp->edr_a352_nits = 0;
 		return;
+	}
 	cap = dcp_edr_target(READ_ONCE(dcp->panel.peak_nits), sdr, dcp->panel.edr_ceiling);
 	if (dcp->output_edr)
 		target = cap;
@@ -372,6 +374,7 @@ static void dcp_edr_prepare_v27(struct apple_dcp *dcp, struct dcp_swap_v27 *swap
 	next = dcp_edr_next_timed(cur, target, cap, prev_sdr, sdr, us);
 	dcp->edr_step = now;
 	bri = (u64)sdr * next / DCP_EDR_UNITY;
+	dcp->edr_a352_nits = bri;
 	dev_info(dcp->dev, "edr: sdr %u cur %u next %u target %u cap %u peak %u bri %llu restart %d out %d\n",
 		 sdr, cur, next, target, cap, (unsigned int)READ_ONCE(dcp->panel.peak_nits),
 		 bri, restart, dcp->output_edr);
@@ -3324,6 +3327,8 @@ static void dcp_w86_send_a352(struct apple_dcp *dcp)
 	u32 nits = dcp->edr_present_sdr;
 	struct dcp_pipe_set_352_req req;
 
+	if (dcp_edr_a352_scaled && dcp->edr_a352_nits)
+		nits = dcp->edr_a352_nits;
 	if (!nits)
 		nits = dcp->w86_last_nits;
 	else

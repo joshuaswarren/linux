@@ -214,6 +214,10 @@ bool dcp_a352_enable_7c;
 module_param_named(a352_enable_7c, dcp_a352_enable_7c, bool, 0644);
 MODULE_PARM_DESC(a352_enable_7c, "send A352 key 0x7c value 0 then 1 at boot, before the first swap (27.3 probe)");
 
+bool dcp_edr_a352_scaled = true;
+module_param_named(edr_a352_scaled, dcp_edr_a352_scaled, bool, 0644);
+MODULE_PARM_DESC(edr_a352_scaled, "send A352 key 0x14 with the EDR-scaled nits (SDR white x headroom) on firmware 27.3, not the SDR white");
+
 unsigned int dcp_swap_ts_mode = DCP_SWAP_TS_MODE_DEFAULT;
 module_param_named(swap_ts_mode, dcp_swap_ts_mode, uint, 0644);
 MODULE_PARM_DESC(swap_ts_mode, "swap timestamps: 0 clock values, 1 constant 120 as on M4, 2 ts[1] one 120 Hz frame before ts[0] for a lone swap, 3 all zero, 4 macOS layout");
