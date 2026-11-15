@@ -2841,6 +2841,35 @@ int tb_dp_host_rebuild(struct tb *tb, u8 in_port, u64 generation)
 }
 EXPORT_SYMBOL_FOR_MODULES(tb_dp_host_rebuild, "thunderbolt_apple");
 
+/*
+ * Logs the DP OUT adapter (the display side) of the host DP tunnel from DP IN
+ * adapter @in_port: config words CS0 to CS8. Caller holds tb->lock.
+ */
+void tb_dp_host_sample_out(struct tb *tb, u8 in_port, unsigned int mset, const char *tag)
+{
+	struct tb_cm *tcm = tb_priv(tb);
+	struct tb_tunnel *tunnel;
+
+	lockdep_assert_held(&tb->lock);
+	list_for_each_entry(tunnel, &tcm->tunnel_list, list) {
+		struct tb_port *out = tunnel->dst_port;
+		u32 w[9];
+		int i;
+
+		if (!tb_tunnel_is_host_dp(tunnel) || tunnel->src_port->port != in_port)
+			continue;
+		for (i = 0; i < ARRAY_SIZE(w); i++)
+			if (tb_port_read(out, &w[i], TB_CFG_PORT, out->cap_adap + i, 1))
+				w[i] = 0xffffffff;
+		tb_port_info(out,
+			     "w88-dpout: m#%u %s CS0=%08x CS1=%08x CS2=%08x CS3=%08x LOCAL=%08x REMOTE=%08x STAT=%08x COMMON=%08x CS8=%08x\n",
+			     mset, tag, w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8]);
+		return;
+	}
+	tb_warn(tb, "w88-dpout: m#%u %s no host DP tunnel on adapter %u\n", mset, tag, in_port);
+}
+EXPORT_SYMBOL_FOR_MODULES(tb_dp_host_sample_out, "thunderbolt_apple");
+
 static void tb_tunnel_dp(struct tb *tb)
 {
 	struct tb_cm *tcm = tb_priv(tb);

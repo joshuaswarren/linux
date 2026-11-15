@@ -460,6 +460,10 @@ struct apple_cio {
 		u8 diag_port;		/* the DP IN adapter's port number for the diagnostics */
 		struct delayed_work diag_poll;	/* w88: periodic DP IN samples after tunnel activation */
 		unsigned int diag_polls;
+		struct delayed_work mset_diag;	/* w88: DP IN/OUT samples around a mode set */
+		unsigned int mset_step;
+		unsigned int mset_n;		/* the mode set the samples belong to */
+		bool mset_pre;			/* one read before the mode set is due */
 	} dpin[APPLE_DPIN_MAX];
 };
 
@@ -1213,6 +1217,7 @@ static void apple_cio_destroy_wq(void *data)
 		cancel_delayed_work_sync(&acio->dpin[i].retry);
 		cancel_delayed_work_sync(&acio->dpin[i].poll);
 		cancel_delayed_work_sync(&acio->dpin[i].diag_poll);
+		cancel_delayed_work_sync(&acio->dpin[i].mset_diag);
 	}
 	destroy_workqueue(acio->dp_wq);
 }
@@ -1969,7 +1974,7 @@ static void apple_dp_dump_adapter(struct tb_port *port, const char *tag)
 		     !!(w[13] & ADP_DP_CS_13_DPTX_DISCOVERY_MODE));
 }
 
-static void apple_dpin_diag(struct apple_dpin_ctx *c, unsigned int ms)
+static void apple_dpin_diag_at(struct apple_dpin_ctx *c, const char *tag)
 {
 	struct apple_nhi *anhi = READ_ONCE(c->diag_anhi);
 	u32 w[9], st = 0, irq = 0, en = 0, ctl = 0;
@@ -1985,12 +1990,14 @@ static void apple_dpin_diag(struct apple_dpin_ctx *c, unsigned int ms)
 	 * The core reads under tb->lock; sample only when it is free.
 	 */
 	if (!mutex_trylock(&anhi->tb->lock)) {
-		dev_info(anhi->dev, "w88-dpin%u +%ums: skipped, tb lock busy\n", c->idx, ms);
+		dev_info(anhi->dev, "w88-dpin%u: m#%u %s skipped, tb lock busy\n",
+			 c->idx, c->mset_n, tag);
 		return;
 	}
 	for (i = 0; i <= 8; i++)
 		if (tb_port_read(in, &w[i], TB_CFG_PORT, in->cap_adap + i, 1))
 			w[i] = 0xffffffff;
+	tb_dp_host_sample_out(anhi->tb, READ_ONCE(c->diag_port), c->mset_n, tag);
 	mutex_unlock(&anhi->tb->lock);
 	scoped_guard(mutex, &c->lock) {
 		if (c->regs && c->state.alive) {
@@ -2001,9 +2008,17 @@ static void apple_dpin_diag(struct apple_dpin_ctx *c, unsigned int ms)
 		}
 	}
 	dev_info(anhi->dev,
-		 "w88-dpin%u +%ums: CS0=%08x CS1=%08x CS2=%08x CS3=%08x LOCAL=%08x REMOTE=%08x STAT=%08x COMMON=%08x CS8=%08x MMIO status=%08x irq=%08x en=%08x ctrl=%08x\n",
-		 c->idx, ms, w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8],
+		 "w88-dpin%u: m#%u %s CS0=%08x CS1=%08x CS2=%08x CS3=%08x LOCAL=%08x REMOTE=%08x STAT=%08x COMMON=%08x CS8=%08x MMIO status=%08x irq=%08x en=%08x ctrl=%08x\n",
+		 c->idx, c->mset_n, tag, w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8],
 		 st, irq, en, ctl);
+}
+
+static void apple_dpin_diag(struct apple_dpin_ctx *c, unsigned int ms)
+{
+	char tag[16];
+
+	snprintf(tag, sizeof(tag), "+%ums", ms);
+	apple_dpin_diag_at(c, tag);
 }
 
 static void apple_dp_dump_host_adapters(struct apple_nhi *anhi)
@@ -2387,6 +2402,52 @@ int apple_dp_tunnel_rebuild(void *data)
 	return tb_dp_host_rebuild(c->diag_anhi->tb, c->diag_port, binding->generation);
 }
 EXPORT_SYMBOL_GPL(apple_dp_tunnel_rebuild);
+
+/* The firmware ends the link about 1.15 s after a mode set that fails: sample up to there. */
+static const unsigned int apple_dpin_mset_at_ms[] = { 0, 50, 500, 1000, 1100, 1150, 1200 };
+
+static void apple_dpin_mset_diag_fn(struct work_struct *work)
+{
+	struct apple_dpin_ctx *c = container_of(to_delayed_work(work),
+						struct apple_dpin_ctx, mset_diag);
+	unsigned int i = c->mset_step;
+	char tag[16];
+
+	if (!READ_ONCE(c->diag_anhi))
+		return;
+	if (c->mset_pre) {
+		c->mset_pre = false;
+		apple_dpin_diag_at(c, "clock");
+		return;
+	}
+	if (i >= ARRAY_SIZE(apple_dpin_mset_at_ms))
+		return;
+	snprintf(tag, sizeof(tag), "+%ums", apple_dpin_mset_at_ms[i]);
+	apple_dpin_diag_at(c, tag);
+	c->mset_step = ++i;
+	if (i < ARRAY_SIZE(apple_dpin_mset_at_ms))
+		queue_delayed_work(system_dfl_wq, &c->mset_diag,
+				   msecs_to_jiffies(apple_dpin_mset_at_ms[i] -
+						    apple_dpin_mset_at_ms[i - 1]));
+}
+
+void apple_dp_tunnel_diag(void *data, unsigned int mset, bool pre)
+{
+	struct apple_dpin_binding *binding = data;
+	struct apple_dpin_ctx *c = binding->ctx;
+
+	scoped_guard(mutex, &c->lock) {
+		if (!apple_dpin_token_access(&c->tokens, binding->generation) ||
+		    !c->diag_anhi)
+			return;
+		c->mset_n = mset;
+		c->mset_pre = pre;
+		if (!pre)
+			c->mset_step = 0;
+	}
+	mod_delayed_work(system_dfl_wq, &c->mset_diag, 0);
+}
+EXPORT_SYMBOL_GPL(apple_dp_tunnel_diag);
 
 static void apple_nhi_dp_tunnel_changed(struct tb_nhi *nhi, u8 in_port,
 					u64 generation, bool active)
@@ -4088,6 +4149,7 @@ static int apple_cio_probe(struct platform_device *pdev)
 			INIT_DELAYED_WORK(&acio->dpin[i].retry, apple_dpin_retry_fn);
 			INIT_DELAYED_WORK(&acio->dpin[i].poll, apple_dpin_poll_fn);
 			INIT_DELAYED_WORK(&acio->dpin[i].diag_poll, apple_dpin_diag_poll_fn);
+			INIT_DELAYED_WORK(&acio->dpin[i].mset_diag, apple_dpin_mset_diag_fn);
 			INIT_WORK(&acio->dpin[i].event_work, apple_dpin_event_fn);
 			ret = devm_mutex_init(dev, &acio->dpin[i].lock);
 			if (ret)

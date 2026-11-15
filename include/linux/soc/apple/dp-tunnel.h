@@ -48,6 +48,14 @@ int apple_dcp_tb_dp_tunnel(struct device_node *connector_np, unsigned int dpin,
  */
 int apple_dp_tunnel_rebuild(void *binding);
 
+/*
+ * Thunderbolt glue: log the DP IN and DP OUT adapters of the tunnel held by
+ * @binding for mode set number @mset. With @pre, one read now (before the mode
+ * set); else reads at set points after the mode set began. Takes only the
+ * binding's own lock and queues the work.
+ */
+void apple_dp_tunnel_diag(void *binding, unsigned int mset, bool pre);
+
 /* The sink raised IRQ_HPD on the tunnel's DP IN adapter. */
 #define APPLE_DP_TUNNEL_IRQ_HPD		BIT(0)
 /* The HPD level of the tunnel's DP IN adapter changed to @hpd. */

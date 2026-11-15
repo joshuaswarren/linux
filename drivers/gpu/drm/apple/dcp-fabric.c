@@ -2487,6 +2487,18 @@ int dcp_direct_crossbar_link(struct apple_dcp *dcp, bool up)
 	return ret;
 }
 
+/* Log the tunnel's DP IN and DP OUT adapters for the current or next mode set. tb_lock held. */
+static void dcp_tb_diag_locked(struct apple_dcp *dcp, bool pre)
+{
+	typeof(&apple_dp_tunnel_diag) diag = symbol_get(apple_dp_tunnel_diag);
+
+	if (!diag)
+		return;
+	if (dcp->tb_dpin_ctx)
+		diag(dcp->tb_dpin_ctx, dcp->tb_modesets + pre, pre);
+	symbol_put(apple_dp_tunnel_diag);
+}
+
 /*
  * Thunderbolt DP IN, from DCP's SetLinkRate: start (rate != 0) or stop the
  * tunnel pixel clock. A stopped clock also takes the crossbar connection down.
@@ -2506,6 +2518,8 @@ int dcp_tunnel_set_rate(struct apple_dcp *dcp, struct phy *phy, u32 unit,
 		return -ENODEV;
 	if (!dcp_fabric_callback_valid(route->tunnel_generation, dcp->tb_generation))
 		return -ESTALE;
+	if (link_rate)
+		dcp_tb_diag_locked(dcp, true);
 	/*
 	 * T8132: the clock of the route's own DP IN, from its own source; no
 	 * second tile. Rate 0 takes the crossbar link down first.
@@ -3433,7 +3447,21 @@ void dcp_tb_event_work(struct work_struct *work)
  */
 void dcp_tb_modeset_begin(struct apple_dcp *dcp)
 {
+	struct dptx_port *dptx = &dcp->dptxport[0];
+
 	WRITE_ONCE(dcp->tb_modeset_busy, true);
+	if (!dcp->dptx_tunnel)
+		return;
+	dcp->tb_modeset_begin_jiffies = jiffies;
+	dev_info(dcp->dev,
+		 "DP tunnel: mode set #%u begins: link rate %#x, %u lanes, drive %#x/%#x, %u sink IRQ_HPD so far\n",
+		 ++dcp->tb_modesets, dptx->link_rate, dptx->lane_count,
+		 dptx->drive_settings[0], dptx->drive_settings[1], dcp->tb_irq_hpd_count);
+	/* Never wait here: the tunnel notifications take tb_lock under the domain lock. */
+	if (mutex_trylock(&dcp->tb_lock)) {
+		dcp_tb_diag_locked(dcp, false);
+		mutex_unlock(&dcp->tb_lock);
+	}
 }
 
 void dcp_tb_modeset_end(struct apple_dcp *dcp)
@@ -3441,6 +3469,12 @@ void dcp_tb_modeset_end(struct apple_dcp *dcp)
 	bool held;
 
 	WRITE_ONCE(dcp->tb_modeset_done_jiffies, jiffies);
+	if (dcp->dptx_tunnel)
+		dev_info(dcp->dev,
+			 "DP tunnel: mode set #%u ended after %u ms: link rate %#x, %u lanes\n",
+			 dcp->tb_modesets,
+			 jiffies_to_msecs(jiffies - dcp->tb_modeset_begin_jiffies),
+			 dcp->dptxport[0].link_rate, dcp->dptxport[0].lane_count);
 	if (tb_irq_log_ms && dcp->external) {
 		dcp->tb_irq_log_t0 = ktime_get();
 		WRITE_ONCE(dcp->tb_irq_log_until,
