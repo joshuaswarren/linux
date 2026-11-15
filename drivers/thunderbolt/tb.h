@@ -1165,6 +1165,7 @@ static inline bool tb_port_is_apple_host_dpin(const struct tb_port *port)
 }
 
 bool tb_has_apple_host_dp_tunnel(struct tb *tb);
+int tb_dp_host_rebuild(struct tb *tb, u8 in_port, u64 generation);
 
 static inline bool tb_port_needs_host_dp_credits(const struct tb_port *port)
 {
