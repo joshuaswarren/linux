@@ -6,6 +6,7 @@
 #include <linux/err.h>
 #include <linux/limits.h>
 #include <linux/math.h>
+#include <linux/module.h>
 #include <linux/string.h>
 #include <linux/slab.h>
 
@@ -17,6 +18,15 @@
 #include "dcp-refresh.h"
 #include "dcp-peer-v27.h"
 #include "trace.h"
+
+/*
+ * Test knob: drop every color mode the sink lists as DSC-required, so a
+ * timing that has a color mode without DSC keeps only those.
+ */
+static bool dsc_disable;
+module_param(dsc_disable, bool, 0644);
+MODULE_PARM_DESC(dsc_disable,
+		 "Skip color modes the timing lists as DSC-required (default: off)");
 
 #define DCP_PARSE_HEADER 0xd3
 
@@ -730,6 +740,17 @@ static int parse_color_modes(struct dcp_parse_ctx *handle,
 				out->sdr_rgb.score = -1;
 			fill_color_mode(&out->sdr_rgb, &cmode);
 			best_sdr_rank = rank;
+			continue;
+		}
+
+		if (limits_known && limits->dsc_required.count)
+			pr_info_once("apple-dcp: dsc_disable=%d, first DSC-required list has %u color modes\n",
+				     dsc_disable, limits->dsc_required.count);
+
+		if (dsc_disable && limits_known &&
+		    timing_color_contains(&limits->dsc_required, cmode.id)) {
+			pr_info_once("apple-dcp: dsc_disable: skipped DSC-required color mode %lld\n",
+				     (long long)cmode.id);
 			continue;
 		}
 
