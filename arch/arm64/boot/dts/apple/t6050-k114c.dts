@@ -661,7 +661,10 @@
 	apple,pcie-tunnel = <&acio2_pcie_tunnel>;
 };
 
-#include "t6050-k114c-usb2.dtsi"
+/* USB 2.0 host: t6050-k114c-usb2.dtsi is out until it is re-merged —
+ * integration now describes hpm1/hpm2 and usb_drd1/2 here, so the usb2
+ * file duplicates labels and the same usb@ MMIO. Port-0 hpm0 + dwc3_0
+ * from that file still need a delta-only follow-up. */
 /*
  * iBoot leaves the N1 port's gates in automatic power management with the
  * target on and the block gated (APCIE_SYS_GP and APHY_GP_AUS5 actual 0,
