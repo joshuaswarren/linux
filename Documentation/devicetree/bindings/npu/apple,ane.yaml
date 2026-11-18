@@ -40,6 +40,10 @@ properties:
           - apple,t8132-ane
           - apple,t8140-ane
           - apple,t8142-ane
+          - apple,t8122-ane
+          - apple,t6030-ane
+          - apple,t6031-ane
+          - apple,t6034-ane
       - items:
           - const: apple,t6001-ane
           - const: apple,ane
@@ -175,7 +179,7 @@ properties:
 
   apple,ane-type:
     $ref: /schemas/types.yaml#/definitions/uint32
-    enum: [0x100, 0x110, 0x200]
+    enum: [0x100, 0x110, 0x200, 0xb0, 0xc0, 0xe0]
     description: Firmware generation identifier supplied by the bootloader
 
   apple,firmware-preloaded:
@@ -390,6 +394,10 @@ allOf:
               - apple,t6050-ane
               - apple,t8142-ane
               - apple,t8132-ane
+              - apple,t8122-ane
+              - apple,t6030-ane
+              - apple,t6031-ane
+              - apple,t6034-ane
     then:
       properties:
         interrupt-names: false
@@ -494,6 +502,10 @@ allOf:
                 - apple,t8132-ane
                 - apple,t6001-ane
                 - apple,t8142-ane
+                - apple,t8122-ane
+                - apple,t6030-ane
+                - apple,t6031-ane
+                - apple,t6034-ane
     then:
       properties:
         power-domains:
@@ -502,13 +514,48 @@ allOf:
       properties:
         compatible:
           contains:
+            enum:
+              - apple,t8122-ane
+              - apple,t6030-ane
+              - apple,t6031-ane
+              - apple,t6034-ane
+    then:
+      properties:
+        reg:
+          minItems: 3
+          maxItems: 3
+        reg-names:
+          minItems: 3
+          maxItems: 3
+          items:
+            - const: engine
+            - const: pmgr
+            - const: set
+        interrupts:
+          minItems: 5
+          maxItems: 5
+        power-domains:
+          minItems: 1
+          maxItems: 5
+      required:
+        - apple,ane-type
+
+  - if:
+      properties:
+        compatible:
+          contains:
             const: apple,t6001-ane
     then:
       properties:
         reg:
-          maxItems: 1
+          minItems: 1
+          maxItems: 2
         reg-names:
-          maxItems: 1
+          minItems: 1
+          maxItems: 2
+          items:
+            - const: engine
+            - const: set
         power-domains:
           maxItems: 1
       required:

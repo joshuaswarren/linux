@@ -534,6 +534,51 @@
 			power-domains = <&ps_avd_sys>;
 		};
 
+		ane_dart0: iommu@311800000 {
+			compatible = "apple,t8122-dart", "apple,t8110-dart";
+			reg = <0x3 0x11800000 0x0 0x4000>;
+			#iommu-cells = <1>;
+			interrupt-parent = <&aic>;
+			interrupts = <AIC_IRQ 525 IRQ_TYPE_LEVEL_HIGH>;
+			power-domains = <&ps_ane_sys>;
+		};
+
+		ane_dart1: iommu@311810000 {
+			compatible = "apple,t8122-dart", "apple,t8110-dart";
+			reg = <0x3 0x11810000 0x0 0x4000>;
+			#iommu-cells = <1>;
+			interrupt-parent = <&aic>;
+			interrupts = <AIC_IRQ 525 IRQ_TYPE_LEVEL_HIGH>;
+			power-domains = <&ps_ane_sys>;
+		};
+
+		ane_dart2: iommu@311820000 {
+			compatible = "apple,t8122-dart", "apple,t8110-dart";
+			reg = <0x3 0x11820000 0x0 0x4000>;
+			#iommu-cells = <1>;
+			interrupt-parent = <&aic>;
+			interrupts = <AIC_IRQ 525 IRQ_TYPE_LEVEL_HIGH>;
+			power-domains = <&ps_ane_sys>;
+		};
+
+		ane: ane@310000000 {
+			compatible = "apple,t8122-ane";
+			apple,ane-type = <0xb0>;
+			reg = <0x3 0x10000000 0x0 0x2000000>,
+				<0x2 0xd0700000 0x0 0x18000>,
+				<0x2 0xd0724000 0x0 0x4000>;
+			reg-names = "engine", "pmgr", "set";
+			interrupt-parent = <&aic>;
+			interrupts = <AIC_IRQ 507 IRQ_TYPE_LEVEL_HIGH>,
+				<AIC_IRQ 506 IRQ_TYPE_LEVEL_HIGH>,
+				<AIC_IRQ 509 IRQ_TYPE_LEVEL_HIGH>,
+				<AIC_IRQ 508 IRQ_TYPE_LEVEL_HIGH>,
+				<AIC_IRQ 524 IRQ_TYPE_LEVEL_HIGH>;
+			iommus = <&ane_dart0 0>, <&ane_dart1 0>, <&ane_dart2 0>;
+			power-domains = <&ps_ane_sys>;
+			status = "disabled";
+		};
+
 		/* apple_sep enables it; the SEP only takes IOVAs in this window. */
 		sep_dart: iommu@29cac0000 {
 			compatible = "apple,t8122-dart", "apple,t8110-dart";

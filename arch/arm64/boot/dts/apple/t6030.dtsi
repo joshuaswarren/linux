@@ -751,6 +751,51 @@
 			power-domains = <&ps_avd_sys>;
 		};
 
+		ane_dart0: iommu@309800000 {
+			compatible = "apple,t6030-dart", "apple,t8110-dart";
+			reg = <0x3 0x09800000 0x0 0x4000>;
+			#iommu-cells = <1>;
+			interrupt-parent = <&aic>;
+			interrupts = <AIC_IRQ 577 IRQ_TYPE_LEVEL_HIGH>;
+			power-domains = <&ps_ane_sys>;
+		};
+
+		ane_dart1: iommu@309810000 {
+			compatible = "apple,t6030-dart", "apple,t8110-dart";
+			reg = <0x3 0x09810000 0x0 0x4000>;
+			#iommu-cells = <1>;
+			interrupt-parent = <&aic>;
+			interrupts = <AIC_IRQ 577 IRQ_TYPE_LEVEL_HIGH>;
+			power-domains = <&ps_ane_sys>;
+		};
+
+		ane_dart2: iommu@309820000 {
+			compatible = "apple,t6030-dart", "apple,t8110-dart";
+			reg = <0x3 0x09820000 0x0 0x4000>;
+			#iommu-cells = <1>;
+			interrupt-parent = <&aic>;
+			interrupts = <AIC_IRQ 577 IRQ_TYPE_LEVEL_HIGH>;
+			power-domains = <&ps_ane_sys>;
+		};
+
+		ane: ane@308000000 {
+			compatible = "apple,t6030-ane";
+			apple,ane-type = <0xc0>;
+			reg = <0x3 0x08000000 0x0 0x2000000>,
+				<0x3 0x50700000 0x0 0x18000>,
+				<0x3 0x50724000 0x0 0x4000>;
+			reg-names = "engine", "pmgr", "set";
+			interrupt-parent = <&aic>;
+			interrupts = <AIC_IRQ 559 IRQ_TYPE_LEVEL_HIGH>,
+				<AIC_IRQ 558 IRQ_TYPE_LEVEL_HIGH>,
+				<AIC_IRQ 561 IRQ_TYPE_LEVEL_HIGH>,
+				<AIC_IRQ 560 IRQ_TYPE_LEVEL_HIGH>,
+				<AIC_IRQ 576 IRQ_TYPE_LEVEL_HIGH>;
+			iommus = <&ane_dart0 0>, <&ane_dart1 0>, <&ane_dart2 0>;
+			power-domains = <&ps_ane_sys>;
+			status = "disabled";
+		};
+
 		pinctrl_ap: pinctrl@347100000 {
 			compatible = "apple,t6030-pinctrl", "apple,t8103-pinctrl";
 			reg = <0x3 0x47100000 0x0 0x4000>;

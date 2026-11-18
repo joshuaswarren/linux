@@ -11,6 +11,11 @@
 	compatible = "apple,t6034", "apple,arm-platform";
 };
 
+/* Same die as T6031; the driver row differs (ane_t6034_soc). */
+&ane {
+	compatible = "apple,t6034-ane";
+};
+
 /* The 30-core GPU is not the T6031's: keep T6031 GPU support off it. */
 &gpu {
 	compatible = "apple,agx-t6034";

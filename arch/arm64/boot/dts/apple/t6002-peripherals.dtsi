@@ -717,13 +717,14 @@
 
 	ane2: ane@285c04000 {
 		compatible = "apple,t6001-ane", "apple,ane";
-		reg = <0x2 0x85c04000 0x0 0x24000>;
+		reg = <0x2 0x85c04000 0x0 0x24000>,
+			<0x2 0x8e08c000 0x0 0x4000>;
+		reg-names = "engine", "set";
 		interrupt-parent = <&aic>;
 		interrupts = <AIC_IRQ 1 770 IRQ_TYPE_LEVEL_HIGH>;
 		power-domains = <&ps_ane_sys_cpu_die1>;
 		clocks = <&peripheral_clocks_die1 318>, <&peripheral_clocks_die1 319>, <&peripheral_clocks_die1 320>, <&peripheral_clocks_die1 321>;
 		iommus = <&ane2_dart0 0>, <&ane2_dart1 0>, <&ane2_dart2 0>;
-		reg-names = "engine";
 		interrupt-names = "ane";
 		status = "disabled";
 	};
