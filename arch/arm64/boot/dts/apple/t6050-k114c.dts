@@ -27,7 +27,7 @@
 / {
 	aliases {
 		keyboard = &keyboard;
-		serial0 = &serial0;
+		serial0 = &dockchannel;
 		/* kboot fills the N1's factory addresses from /chosen through these */
 		wifi0 = &n1_alpha;
 		bluetooth0 = &n1_beta;
