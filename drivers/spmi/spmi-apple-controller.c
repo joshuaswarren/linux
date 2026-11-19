@@ -112,6 +112,7 @@ static const struct apple_spmi_hw apple_spmi_gen4 = {
 	.command = 0x210,
 	.reply = 0x220,
 	.rx_empty = BIT(30),
+	.num_irqs = 256,
 	.irq_mask = SPMI_GEN4_IRQ_MASK_BASE,
 	.irq_ack = SPMI_GEN4_IRQ_ACK_BASE,
 };
@@ -624,8 +625,10 @@ static int apple_spmi_init_irq(struct platform_device *pdev,
 		return ret;
 
 	irq_set_chained_handler_and_data(spmi->irq, apple_spmi_irq_handler, spmi);
-	apple_spmi_irq_unmask_raw(spmi, spmi->hw->num_irqs);
-	spmi->notify_irq = true;
+	if (spmi->hw->legacy_irqs) {
+		apple_spmi_irq_unmask_raw(spmi, spmi->hw->num_irqs);
+		spmi->notify_irq = true;
+	}
 
 	return 0;
 }
@@ -664,8 +667,17 @@ static int apple_spmi_resume_noirq(struct device *dev)
 	unsigned long flags;
 	size_t i;
 
-	if (!spmi->notify_parked)
+	if (!spmi->notify_parked) {
+		/* Firmware sleep can overwrite gen4 masks without parking a notification. */
+		if (spmi->hw->legacy_irqs || !spmi->irqd || !pm_resume_via_firmware())
+			return 0;
+		raw_spin_lock_irqsave(&spmi->irq_mask_lock, flags);
+		bitmap_to_arr32(words, spmi->irq_mask_cache, spmi->hw->num_irqs);
+		for (i = 0; i < spmi->hw->num_irqs / 32; i++)
+			writel(words[i], spmi->regs + spmi->hw->irq_mask + i * 4);
+		raw_spin_unlock_irqrestore(&spmi->irq_mask_lock, flags);
 		return 0;
+	}
 
 	guard(mutex)(&spmi->fifo_lock);
 	raw_spin_lock_irqsave(&spmi->irq_mask_lock, flags);
@@ -726,9 +738,6 @@ static int apple_spmi_probe(struct platform_device *pdev)
 	if (spmi->irq < 0 && spmi->irq != -ENXIO)
 		return spmi->irq;
 	if (spmi->irq >= 0) {
-		if (!spmi->hw->legacy_irqs)
-			return dev_err_probe(&pdev->dev, -EOPNOTSUPP,
-					     "Generation 4 interrupt layout is not supported\n");
 		ret = apple_spmi_init_irq(pdev, spmi, spmi->irq);
 		if (ret)
 			return ret;
