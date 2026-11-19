@@ -1167,9 +1167,25 @@ static const struct ane_soc ane_soc_t6000 = {
 	.high_level = 5,
 };
 
+static const struct ane_soc ane_soc_t6001 = {
+	/* Second/die-1 T600x engine (ANE1 on T6001, ANE1-3 on T6002). The
+	 * SET base is per node, not per compatible: die-1 addresses differ
+	 * from die-0, and the second engines' bases are unmeasured. The
+	 * descriptor therefore carries no base; a node that knows its SET
+	 * window supplies it as a named "set" reg (see probe). A node
+	 * without one binds with ps unmapped - the documented tolerated
+	 * path - rather than guess a base that would external-abort the
+	 * SoC on access.
+	 */
+	.ps_base = 0,
+	.tm_retention = true,
+	.high_level = 5,
+};
+
 static const struct of_device_id ane_of_match[] = {
 	{ .compatible = "apple,t8103-ane", .data = &ane_soc_t8103 },
 	{ .compatible = "apple,t6000-ane", .data = &ane_soc_t6000 },
+	{ .compatible = "apple,t6001-ane", .data = &ane_soc_t6001 },
 	{}
 };
 
@@ -1181,6 +1197,7 @@ static int ane_platform_probe(struct platform_device *pdev)
 	const struct ane_soc *soc = of_device_get_match_data(dev);
 	struct ane_device *ane;
 	struct drm_device *drm;
+	struct resource *res;
 	int err;
 
 	ane = devm_drm_dev_alloc(dev, &ane_drm_driver, struct ane_device, drm);
@@ -1241,14 +1258,19 @@ static int ane_platform_probe(struct platform_device *pdev)
 		goto detach_genpd;
 	}
 
-	/* m1n1 keys the SET block by ADT node name (ANE.ps_map); the device
-	 * tree carries no range for it, so the SoC descriptor picks the
-	 * base (see struct ane_soc above). Mapped read-only, always:
+	/* m1n1 keys the SET block by ADT node name (ANE.ps_map); by default
+	 * the SoC descriptor picks the base (see struct ane_soc above).
+	 * A node that knows its own SET window carries it as a named "set"
+	 * reg - die-1 engines on T6002, whose base is per node rather than
+	 * per compatible - and that window wins. Mapped read-only, always:
 	 * recovery logs its ACTUAL nibbles beside every engine write and
 	 * refuses engine MMIO unless the islands read powered on. Unmapped
 	 * is tolerated: recovery then just skips the check.
 	 */
 	ane->ps_base = soc->ps_base;
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "set");
+	if (res)
+		ane->ps_base = res->start;
 	if (ane->ps_base)
 		ane->ps = devm_ioremap(dev, ane->ps_base, 0x38);
 
