@@ -1154,6 +1154,7 @@ static int dchid_create_interface(struct dchid_iface *iface)
 
 /* hid-core rejects any Report Size above this (see hid_parser_global()). */
 #define DCHID_MAX_REPORT_SIZE	16384
+#define DCHID_REPORT_PAD_SIZE	(DCHID_MAX_REPORT_SIZE / 8 + 1)
 
 /*
  * The T6050 multi-touch firmware declares its raw touch report as one item of
@@ -1191,7 +1192,7 @@ static int dchid_clamp_report_sizes(struct dchid_iface *iface, u8 *desc, size_t 
 					 iface->name, val, DCHID_MAX_REPORT_SIZE);
 				if (!iface->pad) {
 					iface->pad = devm_kzalloc(iface->dchid->dev,
-								  DCHID_MAX_REPORT_SIZE / 8,
+								  DCHID_REPORT_PAD_SIZE,
 								  GFP_KERNEL);
 					if (!iface->pad)
 						return -ENOMEM;
@@ -1479,17 +1480,16 @@ static void dchid_handle_report(struct dchid_iface *iface, void *data, size_t le
 		return;
 
 	/*
-	 * A clamped Report Size makes hid-core expect reports of the clamped
-	 * size. Real reports are shorter, and hid-core refuses a buffer smaller
-	 * than the expected size. Pad into the interface buffer, which only
-	 * this interface's ordered workqueue uses. raw_event() sees the true
-	 * length.
+	 * Include space for the report ID: hid-core counts the clamped field
+	 * size in payload bytes. raw_event() still sees the true frame length.
+	 * If hid-core also walks the opaque field, its scalar extractor warns
+	 * once and reads at most 32 bits from the padded payload.
 	 */
-	if (iface->pad && length < DCHID_MAX_REPORT_SIZE / 8) {
+	if (iface->pad && length < DCHID_REPORT_PAD_SIZE) {
 		memcpy(iface->pad, data, length);
-		memset(iface->pad + length, 0, DCHID_MAX_REPORT_SIZE / 8 - length);
+		memset(iface->pad + length, 0, DCHID_REPORT_PAD_SIZE - length);
 		hid_safe_input_report(iface->hid, HID_INPUT_REPORT, iface->pad,
-				      DCHID_MAX_REPORT_SIZE / 8, length, 1);
+				      DCHID_REPORT_PAD_SIZE, length, 1);
 		return;
 	}
 
