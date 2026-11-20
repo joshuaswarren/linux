@@ -59,7 +59,7 @@
 /delete-node/ &gfx_asc;
 /delete-node/ &gfx1_asc;
 
-&{/soc} {
+&t6050_peripherals {
 	/*
 	 * ADT gfx-asc and gfx1-asc at their physical windows: the wrapper, the
 	 * 8-byte iop-vbar, and their second and third interrupts (send-empty,

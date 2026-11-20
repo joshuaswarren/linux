@@ -76,7 +76,11 @@
 #endif
 #ifndef T6050_J716C
 / {
-	soc {
+#ifdef T6050_K114C
+	t6050_peripherals: bus {
+#else
+	t6050_peripherals: soc {
+#endif
 		compatible = "simple-bus";
 		#address-cells = <2>;
 		#size-cells = <2>;
@@ -986,7 +990,7 @@
 #ifdef T6050_J716C
 &j716c_gpu_bus {
 #else
-&{/soc} {
+&t6050_peripherals {
 #endif
 	pmgr_gpx: power-management@2300e80000 {
 		compatible = "apple,t6050-pmgr", "apple,t8103-pmgr", "syscon", "simple-mfd";
@@ -1219,7 +1223,7 @@
 #ifdef T6050_J716C
 &die0 {
 #else
-&{/soc} {
+&t6050_peripherals {
 #endif
 	peripheral_clocks: clock-controller@280600000 {
 		compatible = "apple,t6050-pmgr-clocks", "apple,pmgr-clocks";
@@ -1292,7 +1296,7 @@
 #ifdef T6050_J716C
 &die0 {
 #else
-&{/soc} {
+&t6050_peripherals {
 #endif
 #if defined(T6050_J714C) || defined(T6050_J716C) || defined(T6050_J775C) || defined(T6050_J775D) || defined(T6050_K114C) || defined(T6050_K116C)
 	nub_spmi1: spmi@28a054000 {

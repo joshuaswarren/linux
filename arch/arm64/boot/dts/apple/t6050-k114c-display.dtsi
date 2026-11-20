@@ -38,6 +38,9 @@
 	/* The ADT lists no clocks for the DCP (clock-ids = []); firmware 27 needs the property */
 	apple,clock-ids;
 
+	/* Reserve swap slot 3 for the kernel camera indicator. */
+	apple,camera-indicator-surface = <3>;
+
 	/*
 	 * An OLED, so the generic panel node only, not the mini-LED compatible. The
 	 * DCP reports 3024x1986. The K114c ADT does not give the panel dimensions;
