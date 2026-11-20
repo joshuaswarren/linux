@@ -68,6 +68,27 @@ static void ane_platform_staged_bind_test(struct kunit *test)
 }
 
 #if IS_BUILTIN(CONFIG_DRM_ACCEL_ANE) && IS_BUILTIN(CONFIG_DRM_ACCEL_ANE_FW_KUNIT_TEST)
+static void ane_t6050_preload_layouts_test(struct kunit *test)
+{
+	const u64 phys[] = { 0x100000000, 0x200000000 };
+	const u64 pro_size[] = { 0xc0000, 0x2ac000 };
+	const u64 pro_dva[] = { 0x10000000000, 0x100000c0000 };
+	const u64 max_size[] = { 0xec000, 0x280000 };
+	const u64 max_dva[] = { 0x10000000000, 0x100000ec000 };
+	const u8 *pro_pin, *max_pin;
+
+	KUNIT_ASSERT_TRUE(test, ane_fw_preload_validate(&ane_t6050_platform, phys, pro_size,
+						      pro_dva, &pro_pin));
+	KUNIT_ASSERT_TRUE(test, ane_fw_preload_validate(&ane_t6050_platform, phys, max_size,
+						      max_dva, &max_pin));
+	KUNIT_ASSERT_NOT_NULL(test, pro_pin);
+	KUNIT_ASSERT_NOT_NULL(test, max_pin);
+	KUNIT_EXPECT_EQ(test, pro_pin[0], 0x93);
+	KUNIT_EXPECT_EQ(test, max_pin[0], 0xd1);
+	KUNIT_EXPECT_FALSE(test, ane_fw_preload_ranges_valid(&ane_t6050_platform, phys, max_size,
+							    pro_dva));
+}
+
 /* One engine: no aux-3, five DAPF records; a node without DT is refused. */
 static void ane_t8132_platform_test(struct kunit *test)
 {
@@ -90,6 +111,7 @@ static void ane_t8132_platform_test(struct kunit *test)
 
 static struct kunit_case ane_fw_platform_cases[] = {
 #if IS_BUILTIN(CONFIG_DRM_ACCEL_ANE) && IS_BUILTIN(CONFIG_DRM_ACCEL_ANE_FW_KUNIT_TEST)
+	KUNIT_CASE(ane_t6050_preload_layouts_test),
 	KUNIT_CASE(ane_t8132_platform_test),
 #endif
 	KUNIT_CASE(ane_platform_staged_bind_test),

@@ -27,6 +27,11 @@ enum ane_fw_irq_role {
 	ANE_FW_IRQ_CHANNELS,
 };
 
+struct ane_fw_preload_layout {
+	u64 dva[2], size[2];
+	const u8 *text_pin;
+};
+
 /* Later firmware generations must never enter the H14 staging path. */
 struct ane_fw_platform {
 	const struct ane_h16_profile *h16_profiles;
@@ -104,26 +109,53 @@ struct ane_fw_platform {
 	u16 dart_revision;
 	u8 dapf_count;
 	const u8 *text_pin;
+	const struct ane_fw_preload_layout *alt_preload;
+	bool ipc_flexible;
 	/* H16: an aux-3 window, which the build's XL tunables go to. */
 	bool has_xl;
 };
 
-/* Pure range check: the boot loader supplies the physical addresses. */
+static inline bool ane_fw_preload_layout_matches(const u64 size[2], const u64 dva[2],
+						 const u64 expected_size[2],
+						 const u64 expected_dva[2])
+{
+	return size[0] == expected_size[0] && size[1] == expected_size[1] &&
+	       dva[0] == expected_dva[0] && dva[1] == expected_dva[1];
+}
+
+/* The loader supplies the physical addresses; the matched build supplies the TEXT pin. */
+static inline bool
+ane_fw_preload_validate(const struct ane_fw_platform *soc, const u64 phys[2],
+			const u64 size[2], const u64 dva[2], const u8 **text_pin)
+{
+	const u8 *pin = soc->text_pin;
+	u64 end[2];
+	unsigned int i;
+
+	if (!ane_fw_preload_layout_matches(size, dva, soc->preload_size, soc->preload_dva)) {
+		const struct ane_fw_preload_layout *alt = soc->alt_preload;
+
+		if (!alt || !ane_fw_preload_layout_matches(size, dva, alt->size, alt->dva))
+			return false;
+		pin = alt->text_pin;
+	}
+	for (i = 0; i < 2; i++) {
+		if (!phys[i] || !IS_ALIGNED(phys[i], SZ_16K) ||
+		    check_add_overflow(phys[i], size[i], &end[i]))
+			return false;
+	}
+	if (end[0] > phys[1] && end[1] > phys[0])
+		return false;
+	if (text_pin)
+		*text_pin = pin;
+	return true;
+}
+
 static inline bool
 ane_fw_preload_ranges_valid(const struct ane_fw_platform *soc, const u64 phys[2],
 			    const u64 size[2], const u64 dva[2])
 {
-	u64 end[2];
-	unsigned int i;
-
-	for (i = 0; i < 2; i++) {
-		if (!phys[i] || !IS_ALIGNED(phys[i], SZ_16K) ||
-		    size[i] != soc->preload_size[i] ||
-		    dva[i] != soc->preload_dva[i] ||
-		    check_add_overflow(phys[i], size[i], &end[i]))
-			return false;
-	}
-	return end[0] <= phys[1] || end[1] <= phys[0];
+	return ane_fw_preload_validate(soc, phys, size, dva, NULL);
 }
 
 /*

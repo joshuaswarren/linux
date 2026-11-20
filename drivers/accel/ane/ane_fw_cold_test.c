@@ -179,6 +179,28 @@ static void ane_cold_heap_tail_test(struct kunit *test)
 					       &tail_size), -ERANGE);
 }
 
+static void ane_cold_boot_ipc_request_test(struct kunit *test)
+{
+	u32 req[] = { ANE_FW_CHANNELS, 0xc440, 0, 0xf00000, 0 };
+	u64 ipc_bytes;
+
+	KUNIT_ASSERT_EQ(test, ane_fw_boot_request(req, false, SZ_64K, &ipc_bytes), 0);
+	KUNIT_EXPECT_EQ(test, ipc_bytes, 0xc441ULL);
+	KUNIT_ASSERT_EQ(test, ane_fw_boot_request(req, true, 0x14000, &ipc_bytes), 0);
+	KUNIT_EXPECT_EQ(test, ipc_bytes, 0xc441ULL);
+	req[1] = 0x10440;
+	KUNIT_ASSERT_EQ(test, ane_fw_boot_request(req, true, 0x14000, &ipc_bytes), 0);
+	KUNIT_EXPECT_EQ(test, ipc_bytes, 0x10441ULL);
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(req, false, SZ_64K, &ipc_bytes), -EPROTO);
+	req[1] = 0x14000;
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(req, true, 0x14000, &ipc_bytes), -EPROTO);
+	req[1] = ANE_FW_TABLE_SIZE - 2;
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(req, true, 0x14000, &ipc_bytes), -EPROTO);
+	req[1] = 0x10440;
+	req[4] = 1;
+	KUNIT_EXPECT_EQ(test, ane_fw_boot_request(req, true, 0x14000, &ipc_bytes), -EPROTO);
+}
+
 /* The hand-off that starts the engine at boot, and each thing that stops it. */
 static void ane_cold_handoff_test(struct kunit *test)
 {
@@ -373,6 +395,7 @@ static struct kunit_case ane_cold_cases[] = {
 	KUNIT_CASE(ane_cold_handoff_warm_test),
 	KUNIT_CASE(ane_cold_handoff_test),
 	KUNIT_CASE(ane_cold_heap_tail_test),
+	KUNIT_CASE(ane_cold_boot_ipc_request_test),
 	KUNIT_CASE(ane_cold_evidence_test),
 	KUNIT_CASE(ane_cold_step_test),
 	KUNIT_CASE(ane_cold_warm_test),

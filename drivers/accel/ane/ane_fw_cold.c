@@ -73,6 +73,7 @@ struct ane_fw_backend {
 	 */
 	struct ane_fw_surface preload[2], heap_tail;
 	u64 preload_phys[2];
+	const u8 *text_pin;
 	u8 data_digest[SHA256_DIGEST_SIZE];
 	/* Powered down for system sleep; a (cold or warm) boot is due. */
 	bool slept;
@@ -719,7 +720,7 @@ static int ane_fw_reload_segment(struct ane_fw_backend *b, unsigned int i)
 	memunmap(source);
 	dma_wmb();
 	sha256(s->cpu, s->size, digest);
-	return memcmp(digest, i ? b->data_digest : b->soc->text_pin, sizeof(digest)) ?
+	return memcmp(digest, i ? b->data_digest : b->text_pin, sizeof(digest)) ?
 	       -EKEYREJECTED : 0;
 }
 
@@ -1552,7 +1553,7 @@ static int ane_fw_preload_metadata(struct ane_fw_backend *b, u64 physical[2],
 		if (ret)
 			return ret;
 	}
-	if (!ane_fw_preload_ranges_valid(b->soc, physical, size, dva))
+	if (!ane_fw_preload_validate(b->soc, physical, size, dva, &b->text_pin) || !b->text_pin)
 		return -EINVAL;
 	return 0;
 }
@@ -1591,7 +1592,7 @@ static int ane_fw_preload(struct ane_fw_backend *b)
 		sha256_init(&hash);
 		sha256_update(&hash, snapshots[i].cpu, size[i]);
 		sha256_final(&hash, digest);
-		if (memcmp(digest, i ? data_pin : b->soc->text_pin, sizeof(digest)))
+		if (memcmp(digest, i ? data_pin : b->text_pin, sizeof(digest)))
 			return -EKEYREJECTED;
 	}
 	/* Preserve every personalized DATA byte, including the iBoot TLV table. */
@@ -1670,7 +1671,8 @@ static int ane_fw_prepare(struct ane_fw_backend *b)
 			      IOMMU_READ | IOMMU_WRITE, &b->pool);
 	if (ret)
 		return ret;
-	ret = ane_fw_alloc_at(b, ANE_FW_IPC_DVA, SZ_64K,
+	ret = ane_fw_alloc_at(b, ANE_FW_IPC_DVA,
+			      b->soc->ipc_flexible ? ANE_FW_HEAP_DVA - ANE_FW_IPC_DVA : SZ_64K,
 			      IOMMU_READ | IOMMU_WRITE, &b->ipc);
 	if (ret)
 		return ret;
@@ -1691,7 +1693,8 @@ static int ane_fw_boot(struct ane_fw_backend *b)
 {
 	void __iomem *scratch = b->engine + b->soc->scratch;
 	u8 *init = b->pool.cpu + 0x180;
-	u64 table;
+	u64 table, ipc_bytes;
+	u32 req[5];
 	unsigned int i;
 	int ret;
 
@@ -1707,15 +1710,19 @@ static int ane_fw_boot(struct ane_fw_backend *b)
 	if (ret)
 		return ret;
 	dev_dbg(&b->pdev->dev, "ANE boot: READY\n");
-	if (ane_rd32(b, scratch) != 8 || ane_rd32(b, scratch + 4) != 0xc440 ||
-	    ane_rd32(b, scratch + 12) != 0xf00000 || ane_rd32(b, scratch + 16))
-		return -EPROTO;
+	req[0] = ane_rd32(b, scratch);
+	req[1] = ane_rd32(b, scratch + 4);
+	req[3] = ane_rd32(b, scratch + 12);
+	req[4] = ane_rd32(b, scratch + 16);
+	ret = ane_fw_boot_request(req, b->soc->ipc_flexible, b->ipc.size, &ipc_bytes);
+	if (ret)
+		return ret;
 	put_unaligned_le64(b->ipc.dva, init + 8);
 	put_unaligned_le64(ANE_FW_SPAN, init + 0x10);
 	put_unaligned_le64(0xfc80000, init + 0x18);
 	put_unaligned_le64(b->heap.dva, init + 0x20);
 	put_unaligned_le64(b->heap.size, init + 0x28);
-	put_unaligned_le64(0xc441, init + 0x50);
+	put_unaligned_le64(ipc_bytes, init + 0x50);
 	put_unaligned_le64(b->pool.dva, init + 0x58);
 	put_unaligned_le64(b->pool.size, init + 0x60);
 	put_unaligned_le32(64, init + 0x68);
@@ -2150,10 +2157,12 @@ static bool ane_fw_handoff_present(struct platform_device *pdev,
 		void *text = memremap(h.phys[0], h.size[0], MEMREMAP_WB);
 
 		if (text) {
+			const u8 *pin;
+
 			sha256(text, h.size[0], digest);
 			memunmap(text);
-			h.text_ok = ane_fw_preload_ranges_valid(soc, h.phys, h.size, h.dva) &&
-				    !memcmp(digest, soc->text_pin, sizeof(digest));
+			h.text_ok = ane_fw_preload_validate(soc, h.phys, h.size, h.dva, &pin) &&
+				    pin && !memcmp(digest, pin, sizeof(digest));
 		}
 	}
 	*hp = h;

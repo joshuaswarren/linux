@@ -135,6 +135,19 @@ static inline int ane_fw_heap_tail(const u64 dva[2], const u64 size[2], u64 limi
 	return 0;
 }
 
+/* Firmware READY scratch cell 1 holds the IPC size minus one. */
+static inline int ane_fw_boot_request(const u32 req[5], bool ipc_flexible,
+				     u64 ipc_max, u64 *ipc_bytes)
+{
+	u64 ipc = (u64)req[1] + 1;
+
+	if (req[0] != ANE_FW_CHANNELS || req[3] != 0xf00000 || req[4] ||
+	    (!ipc_flexible && ipc != 0xc441) || ipc < ANE_FW_TABLE_SIZE || ipc > ipc_max)
+		return -EPROTO;
+	*ipc_bytes = ipc;
+	return 0;
+}
+
 /* The exact /chosen/apple,ane-cold-boot value a raw loader boot publishes. */
 #define ANE_FW_COLD_BOOT_EVIDENCE "raw-no-xnu-ane-untouched-v1"
 

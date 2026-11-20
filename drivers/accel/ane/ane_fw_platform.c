@@ -64,6 +64,20 @@ static const u8 ane_t6050_text_pin_27_0[] = {
 	0xd1, 0xa2, 0x20, 0xd0, 0xee, 0x43, 0x8b, 0x8f,
 };
 
+static const u8 ane_t6050_text_pin_k114c[] = {
+	0xd1, 0x66, 0xdb, 0x76, 0x14, 0x7c, 0x79, 0xda,
+	0x72, 0x93, 0x48, 0x51, 0xf0, 0xd4, 0x6a, 0x32,
+	0x06, 0x4f, 0xbe, 0xba, 0xb9, 0x9c, 0xd1, 0x35,
+	0x28, 0x6e, 0xca, 0x48, 0x66, 0xa2, 0xfb, 0xaf,
+};
+
+/* M5 Max TEXT is larger than M5 Pro TEXT; both DATA segments end at the same DVA. */
+static const struct ane_fw_preload_layout ane_t6050_k114c_preload = {
+	.dva = { 0x10000000000, 0x100000ec000 },
+	.size = { 0xec000, 0x280000 },
+	.text_pin = ane_t6050_text_pin_k114c,
+};
+
 const struct ane_fw_platform ane_h16_platform = {
 	.h16_profiles = ane_h16_profiles,
 	.h16_profile_count = ARRAY_SIZE(ane_h16_profiles),
@@ -240,6 +254,8 @@ const struct ane_fw_platform ane_t6050_platform = {
 	.dart_revision = 0x204,
 	.dapf_count = 5,
 	.text_pin = ane_t6050_text_pin_27_0,
+	.alt_preload = &ane_t6050_k114c_preload,
+	.ipc_flexible = true,
 };
 
 /*
