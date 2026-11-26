@@ -3,8 +3,11 @@
 //! Per-device sysfs registration. The caller retains the snapshot Arc until
 //! unregister has drained active readers and freed the C attribute wrapper.
 
-use crate::{g17::telemetry::Readout, memacct::Ledger, stats::StatsSnapshot};
+use crate::{g17::telemetry::Readout, gpu, memacct::Ledger, stats::StatsSnapshot};
 use core::ffi::{c_int, c_void};
+use core::pin::Pin;
+use kernel::error::code::ENODEV;
+use kernel::sync::Arc;
 
 type ReadStats = unsafe extern "C" fn(*const c_void, *mut Readout);
 type SuspendStats = unsafe extern "C" fn(*const c_void, bool);
@@ -26,6 +29,66 @@ extern "C" {
 
 extern "C" {
     fn asahi_sysfs_register_idle(dev: *mut c_void, word: *mut u32) -> c_int;
+    fn asahi_sysfs_register_pstate(dev: *mut c_void) -> c_int;
+}
+
+kernel::sync::global_lock! {
+    // SAFETY: Module initialization initializes this lock before any GPU probes.
+    unsafe(uninit) static BASE_PSTATE_GPU: Mutex<Option<Arc<dyn gpu::Gpu>>> = None;
+    // `Mutex` resolves inside `global_lock!`'s own expansion.
+}
+
+/// Called by module initialization before either adapter registers.
+///
+/// # Safety
+///
+/// Must run once, before the first `gpu_base_pstate` attribute access.
+pub(crate) unsafe fn init() {
+    // SAFETY: The caller runs this once during module initialization.
+    unsafe { BASE_PSTATE_GPU.init() };
+}
+
+/// Register the G13/G14 live `gpu_base_pstate` attribute on this GPU's device.
+///
+/// Retains `gpu` until [`unregister_pstate`]; the C attribute calls the exports
+/// below, which drop to `-ENODEV`/`0` once it is cleared.
+pub(crate) fn register_pstate(
+    dev: *mut kernel::bindings::device,
+    gpu: Arc<dyn gpu::Gpu>,
+) -> kernel::error::Result {
+    // SAFETY: `dev` names the still-bound platform device.
+    let ret = unsafe { asahi_sysfs_register_pstate(dev.cast()) };
+    if ret < 0 {
+        Err(kernel::error::Error::from_errno(ret))
+    } else {
+        *BASE_PSTATE_GPU.lock() = Some(gpu);
+        Ok(())
+    }
+}
+
+/// Called after `unregister` drained the attribute's readers; releases the GPU.
+pub(crate) fn unregister_pstate() {
+    *BASE_PSTATE_GPU.lock() = None;
+}
+
+/// C callback for `gpu_base_pstate` show; the firmware's current floor, or 0.
+#[no_mangle]
+pub extern "C" fn asahi_gpu_base_pstate_get() -> u32 {
+    let gpu = BASE_PSTATE_GPU.lock().clone();
+    gpu.and_then(|gpu| gpu.base_pstate()).unwrap_or(0)
+}
+
+/// C callback for `gpu_base_pstate` store; 0 or a negative errno.
+#[no_mangle]
+pub extern "C" fn asahi_gpu_base_pstate_set(pstate: u32) -> c_int {
+    let gpu = BASE_PSTATE_GPU.lock().clone();
+    match gpu {
+        Some(gpu) => match gpu.set_base_pstate(pstate) {
+            Ok(()) => 0,
+            Err(e) => e.to_errno(),
+        },
+        None => ENODEV.to_errno(),
+    }
 }
 
 /// Export the idle power-off delay as the read-write `idle_off_delay_ms` (G17).

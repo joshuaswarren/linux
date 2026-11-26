@@ -399,6 +399,47 @@ int asahi_sysfs_register_idle(struct device *dev, u32 *word)
 }
 EXPORT_SYMBOL_GPL(asahi_sysfs_register_idle);
 
+/*
+ * G13/G14: the firmware's burst-start pstate (the apple,perf-base-pstate boot
+ * value), live in HwDataA. Raising it holds bursts at a higher clock during
+ * short work such as token decode; restoring the printed stock value rolls back.
+ */
+static bool asahi_pstate_file;
+
+static ssize_t gpu_base_pstate_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", asahi_gpu_base_pstate_get());
+}
+
+static ssize_t gpu_base_pstate_store(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *buf, size_t count)
+{
+	u32 pstate;
+	int ret;
+
+	if (kstrtou32(buf, 0, &pstate))
+		return -EINVAL;
+	ret = asahi_gpu_base_pstate_set(pstate);
+	return ret ? ret : count;
+}
+
+static DEVICE_ATTR_RW(gpu_base_pstate);
+
+int asahi_sysfs_register_pstate(struct device *dev)
+{
+	int ret;
+
+	if (!dev)
+		return -ENODEV;
+	ret = device_create_file(dev, &dev_attr_gpu_base_pstate);
+	if (!ret)
+		asahi_pstate_file = true;
+	return ret;
+}
+EXPORT_SYMBOL_GPL(asahi_sysfs_register_pstate);
+
 void asahi_sysfs_unregister(struct device *dev, void *handle)
 {
 	struct asahi_stats_attribute *stats = handle;
@@ -416,6 +457,10 @@ void asahi_sysfs_unregister(struct device *dev, void *handle)
 	if (asahi_idle_word) {
 		device_remove_file(dev, &dev_attr_idle_off_delay_ms);
 		asahi_idle_word = NULL;
+	}
+	if (asahi_pstate_file) {
+		device_remove_file(dev, &dev_attr_gpu_base_pstate);
+		asahi_pstate_file = false;
 	}
 	kfree(stats);
 }

@@ -464,6 +464,9 @@ impl platform::Driver for AsahiPlatformDriver {
 
         let stats = gpu.stats_snapshot();
         let debug_stats = gpu.raw_stats_snapshot();
+        // The live base-pstate floor file only exists when the backend can
+        // change HwDataA at runtime (G13/G14; the others report (0, 0)).
+        let pstate_gpu = (gpu.base_pstate_bounds() != (0, 0)).then(|| gpu.clone());
         let data = try_pin_init!(AsahiDrmRegistrationData { gpu, resources });
 
         // SAFETY: `reg` is stored in `AsahiPlatformDriverData` and dropped when the driver is
@@ -486,6 +489,13 @@ impl platform::Driver for AsahiPlatformDriver {
             snapshot,
             stats.is_some() && module_parameters::stats_export.value() != 0,
         )?;
+
+        if let Some(pstate_gpu) = pstate_gpu {
+            if let Err(e) = crate::sysfs_exports::register_pstate(raw_dev, pstate_gpu) {
+                crate::sysfs_exports::unregister(raw_dev, raw_stats);
+                return Err(e);
+            }
+        }
 
         let driver = AsahiPlatformDriverData {
             binding,
@@ -870,6 +880,7 @@ impl Drop for AsahiPlatformDriverData<'_> {
         // device's `as_raw()`, valid for the lifetime of the bound driver.
         if !self.raw_dev.is_null() {
             crate::sysfs_exports::unregister(self.raw_dev, self.raw_stats);
+            crate::sysfs_exports::unregister_pstate();
         }
         drop(self.stats.take());
         if let Some(gpu) = self.g17.as_ref() {

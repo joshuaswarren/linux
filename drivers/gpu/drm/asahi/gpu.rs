@@ -15,6 +15,7 @@ use core::any::Any;
 use core::ops::Range;
 use core::slice;
 use core::sync::atomic::{
+    fence,
     AtomicBool,
     AtomicU32,
     AtomicU64,
@@ -424,6 +425,19 @@ pub(crate) trait Gpu: Send + Sync {
     fn arc_as_any(self: Arc<Self>) -> Arc<dyn Any + Sync + Send>;
     /// Return the G13/G14 firmware manager, if this GPU uses that firmware interface.
     fn manager(&self) -> Option<&dyn GpuManager>;
+    /// The (stock, maximum) burst-start pstate the live floor may hold, or (0, 0)
+    /// when this backend cannot change it at runtime.
+    fn base_pstate_bounds(&self) -> (u32, u32) {
+        (0, 0)
+    }
+    /// The firmware's current burst-start pstate, if this backend exposes it.
+    fn base_pstate(&self) -> Option<u32> {
+        None
+    }
+    /// Write the firmware's burst-start pstate into the live init-data blocks.
+    fn set_base_pstate(&self, _pstate: u32) -> Result {
+        Err(EOPNOTSUPP)
+    }
     /// Initialize the GPU.
     fn init(&self) -> Result;
     /// Return a reference to the global `SequenceIDs` instance.
@@ -1698,6 +1712,51 @@ impl Gpu for GpuManager::ver {
 
     fn manager(&self) -> Option<&dyn GpuManager> {
         Some(self)
+    }
+
+    fn base_pstate_bounds(&self) -> (u32, u32) {
+        (
+            self.dyncfg.pwr.perf_base_pstate,
+            self.dyncfg.pwr.perf_max_pstate,
+        )
+    }
+
+    fn base_pstate(&self) -> Option<u32> {
+        let mut pstate = None;
+        self.initdata
+            .runtime_pointers
+            .hwdata_a
+            .with(|raw, _inner| {
+                // SAFETY: `raw` names the GPU-coherent HwDataA block the
+                // firmware polls; a volatile read returns the live value.
+                pstate = Some(unsafe { core::ptr::read_volatile(&raw.base_pstate_scaled) / 100 });
+            });
+        pstate
+    }
+
+    fn set_base_pstate(&self, pstate: u32) -> Result {
+        if pstate < 1 || pstate > self.dyncfg.pwr.perf_max_pstate {
+            return Err(EINVAL);
+        }
+        let scaled = pstate * 100;
+        self.initdata
+            .runtime_pointers
+            .hwdata_a
+            .with(|raw, _inner| {
+                // SAFETY: `raw` names the GPU-coherent HwDataA block this GpuObject
+                // owns; the fields are naturally aligned u32s so volatile stores
+                // cannot tear, and the fence orders them before the firmware's
+                // next poll of the block.
+                unsafe {
+                    let raw = core::ptr::from_ref(raw).cast_mut();
+                    core::ptr::write_volatile(&mut (*raw).base_pstate_scaled, scaled);
+                    core::ptr::write_volatile(&mut (*raw).base_pstate_scaled_2, scaled);
+                    core::ptr::write_volatile(&mut (*raw).base_pstate_scaled_3, scaled);
+                    core::ptr::write_volatile(&mut (*raw).base_pstate_scaled_4, scaled);
+                    fence(Ordering::SeqCst);
+                }
+            });
+        Ok(())
     }
 
     fn init(&self) -> Result {

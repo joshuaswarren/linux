@@ -37,8 +37,11 @@ int asahi_sysfs_register(struct device *dev, const void *snapshot,
 			 asahi_stats_read_fn read, asahi_stats_suspend_fn suspend,
 			 asahi_stats_frequency_fn frequency);
 int asahi_sysfs_register_idle(struct device *dev, u32 *word);
+int asahi_sysfs_register_pstate(struct device *dev);
 void asahi_sysfs_unregister(struct device *dev, void *handle);
 
 void asahi_set_mem_limit_pct(u32 pct);
+u32 asahi_gpu_base_pstate_get(void);
+int asahi_gpu_base_pstate_set(u32 pstate);
 
 #endif /* _ASAHI_SYSFS_H */
