@@ -187,9 +187,27 @@ static const struct attribute_group apple_pmp_dram_group = {
 
 static const struct apple_pmp_report_offsets apple_pmp_offsets_t6030;
 static const struct apple_pmp_report_offsets apple_pmp_offsets_t600x;
+static const struct apple_pmp_report_offsets apple_pmp_offsets_t602x;
 
 /* T6001 AGX request (see the engine below set_state): AGX is soc-device record 9 on the T6001. */
 #define APPLE_PMP_T6001_AGX_ID 9
+/*
+ * T602x die 0 adds one record before AGX (IOA6, record 6) next to the T6001
+ * layout, so AGX is soc-device record 10 there. The T602x-die0 report entries
+ * are numbered by record too (ANE0 at 0xb matches ANE0's record index on the
+ * T6022 ADT soc-device table, whose die 0 is a T6021 die).
+ */
+#define APPLE_PMP_T602X_AGX_ID 10
+
+/* The soc-device record index of AGX on this report's SoC, or -1. */
+static int apple_pmp_agx_id(const struct apple_pmp_report_offsets *offsets)
+{
+	if (offsets == &apple_pmp_offsets_t600x)
+		return APPLE_PMP_T6001_AGX_ID;
+	if (offsets == &apple_pmp_offsets_t602x)
+		return APPLE_PMP_T602X_AGX_ID;
+	return -1;
+}
 static bool agx_vote = true;
 static struct agx_vote apple_pmp_agx_vote_state = {.idle_ms = AGX_VOTE_IDLE_MS_DEFAULT};
 static DEFINE_SPINLOCK(apple_pmp_agx_vote_lock);
@@ -430,7 +448,7 @@ static void apple_pmp_report_release(void *data)
 	cancel_delayed_work_sync(&rep->ready_work);
 	/* Withdraw child providers while their power callbacks can still use MMIO. */
 	of_platform_depopulate(rep->dev);
-	if (rep->offsets == &apple_pmp_offsets_t600x) {
+	if (apple_pmp_agx_id(rep->offsets) >= 0) {
 		apple_pmp_agx_vote_stop_new();
 		cancel_delayed_work_sync(&apple_pmp_agx_vote_work);
 		guard(mutex)(&apple_pmp_agx_vote_mutex);
@@ -2545,7 +2563,7 @@ static int apple_pmp_report_probe(struct platform_device *pdev)
 	mutex_unlock(&apple_pmp_reports_lock);
 
 	/* A report that comes back (rebind) takes votes again; its removal refused them. */
-	if (rep->offsets == &apple_pmp_offsets_t600x)
+	if (apple_pmp_agx_id(rep->offsets) >= 0)
 		apple_pmp_agx_activity_resume();
 
 	if (rep->offsets->fast_die || rep->start)
@@ -2845,26 +2863,25 @@ static const struct kernel_param_ops apple_pmp_agx_vote_ops = {
 	.get = param_get_bool,
 };
 module_param_cb(agx_vote, &apple_pmp_agx_vote_ops, &agx_vote, 0644);
-MODULE_PARM_DESC(agx_vote, "T6000/T6001: set the AGX power request in the PMP report while the GPU has work in flight (default: on)");
+MODULE_PARM_DESC(agx_vote, "T600x/T602x: set the AGX power request in the PMP report while the GPU has work in flight (default: on)");
 module_param(agx_vote_idle_ms, uint, 0644);
 MODULE_PARM_DESC(agx_vote_idle_ms, "Keep the AGX request this many ms after the last GPU operation ends (default: 250)");
 
-/* Write the AGX request of the bound T6000/T6001 report: -ENODEV without one, -EAGAIN (nothing written) when the PMP does not run. */
+/* Write the AGX request of the bound T600x/T602x report: -ENODEV without one, -EAGAIN (nothing written) when the PMP does not run. */
 static int apple_pmp_agx_write(bool enable, bool no_ack)
 {
 	struct apple_pmp_report *rep;
-	int ret = -ENODEV;
+	int agx, ret = -ENODEV;
 
-	if (!of_machine_is_compatible("apple,t6000") && !of_machine_is_compatible("apple,t6001"))
-		return ret;
 	rcu_read_lock();
 	list_for_each_entry_rcu(rep, &apple_pmp_reports, list) {
-		if (rep->offsets != &apple_pmp_offsets_t600x)
+		agx = apple_pmp_agx_id(rep->offsets);
+		if (agx < 0)
 			continue;
 		if (enable && !(readq(rep->base + rep->offsets->status) & PMP_REPORT_READY))
 			ret = -EAGAIN;
 		else
-			ret = apple_pmp_report_set_state(rep, APPLE_PMP_T6001_AGX_ID, enable, no_ack);
+			ret = apple_pmp_report_set_state(rep, agx, enable, no_ack);
 		break;
 	}
 	rcu_read_unlock();
@@ -3127,7 +3144,7 @@ int apple_pmp_report_set_request(const struct device_node *report_np, unsigned i
 	rcu_read_lock();
 	list_for_each_entry_rcu(rep, &apple_pmp_reports, list) {
 		if (rep->dev->of_node == report_np) {
-			if (id == APPLE_PMP_T6001_AGX_ID && rep->offsets == &apple_pmp_offsets_t600x)
+			if ((int)id == apple_pmp_agx_id(rep->offsets))
 				ret = -EBUSY;	/* the AGX vote owns this bit */
 			else
 				ret = apple_pmp_report_set_state(rep, id, enable, no_ack);
