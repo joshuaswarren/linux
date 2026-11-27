@@ -1014,7 +1014,7 @@ impl Firmware {
             state.bound(),
             state.compute_waited(),
         );
-        port.set_effort_full(effort == power::FULL_EFFORT);
+        port.set_effort_full(published == power::FULL_EFFORT);
         shared.set_full_effort_published(published == power::FULL_EFFORT);
         if state.applied() == published {
             // M5 maps region C read-only to the firmware: once confirmed, the word holds
@@ -2111,7 +2111,7 @@ impl Gpu {
                 idle <- new_delayed_work!("g17::Shared::idle"),
                 housekeeping_timer <- new_delayed_work!("g17::Shared::housekeeping_timer"),
                 governs: m5,
-                tracks_effort_wake: !m5 && submits,
+                tracks_effort_wake: submits,
                 full_effort_published: AtomicBool::new(false),
                 governor <- new_delayed_work!("g17::Shared::governor"),
                 governor_armed: AtomicBool::new(false),

@@ -1709,7 +1709,11 @@ impl InitData {
         compute_waited: bool,
     ) -> u32 {
         if self.m5 {
-            return if waited || bound { effort } else { 0 };
+            return if waited || bound || compute_waited {
+                effort
+            } else {
+                0
+            };
         }
         if bound || compute_waited {
             effort
