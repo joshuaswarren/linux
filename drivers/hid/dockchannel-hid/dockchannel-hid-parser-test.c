@@ -231,6 +231,7 @@ static void dchid_report_size_clamp_test(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, iface->hid_desc);
 	KUNIT_EXPECT_EQ(test, iface->hid_desc_len, sizeof(want));
 	KUNIT_EXPECT_MEMEQ(test, iface->hid_desc, want, sizeof(want));
+	KUNIT_EXPECT_TRUE(test, iface->clamped);
 }
 
 static void dchid_test_destroy_hid(void *data)
@@ -259,19 +260,15 @@ static void dchid_test_capture_parsed(struct hid_device *hid, struct hid_report 
 	seen->parsed = true;
 }
 
-static void dchid_numbered_short_report_test(struct kunit *test)
+static void dchid_test_run_padded_report(struct kunit *test, struct dchid_iface *iface,
+					 const u8 *descriptor, size_t desc_len,
+					 u8 *data, size_t data_len,
+					 size_t want_pad_size)
 {
 	static struct hid_driver driver = {
 		.raw_event = dchid_test_capture_raw,
 		.report = dchid_test_capture_parsed,
 	};
-	static const u8 descriptor[] = {
-		0x05, 0x01, 0x09, 0x04, 0xa1, 0x01,
-		0x85, 0x01, 0x09, 0x30, 0x15, 0x00, 0x26, 0xff, 0x00,
-		0x75, 0x08, 0x96, 0x00, 0x01, 0x81, 0x02, 0xc0,
-	};
-	struct dchid_iface *iface = test->priv;
-	u8 data[] = { 1, 0x12, 0x34 };
 	struct hid_device *hid;
 	struct dchid_test_report seen = {};
 
@@ -280,23 +277,115 @@ static void dchid_numbered_short_report_test(struct kunit *test)
 	KUNIT_ASSERT_EQ(test, kunit_add_action_or_reset(test, dchid_test_destroy_hid, hid), 0);
 	hid->ll_driver = &dchid_ll;
 	hid->driver = &driver;
+	hid->driver_data = iface;
 	hid_set_drvdata(hid, &seen);
-	KUNIT_ASSERT_EQ(test, hid_parse_report(hid, descriptor, sizeof(descriptor)), 0);
+	KUNIT_ASSERT_EQ(test, hid_parse_report(hid, descriptor, desc_len), 0);
 	hid->bpf_rdesc = hid->dev_rdesc;
 	hid->bpf_rsize = hid->dev_rsize;
 	KUNIT_ASSERT_EQ(test, hid_open_report(hid), 0);
 
+	KUNIT_ASSERT_EQ(test, dchid_start(hid), 0);
+	KUNIT_ASSERT_NOT_NULL(test, iface->pad);
+	KUNIT_EXPECT_EQ(test, iface->pad_size, want_pad_size);
+	memset(iface->pad, 0xa5, iface->pad_size);
+
 	iface->hid = hid;
 	iface->open = true;
-	iface->pad = kunit_kmalloc(test, DCHID_REPORT_PAD_SIZE, GFP_KERNEL);
-	KUNIT_ASSERT_NOT_NULL(test, iface->pad);
-	memset(iface->pad, 0xa5, DCHID_REPORT_PAD_SIZE);
-	dchid_handle_report(iface, data, sizeof(data));
+	dchid_handle_report(iface, data, data_len);
 
-	KUNIT_EXPECT_EQ(test, seen.raw_size, sizeof(data));
+	KUNIT_EXPECT_EQ(test, seen.raw_size, data_len);
 	KUNIT_EXPECT_TRUE(test, seen.parsed);
-	KUNIT_EXPECT_MEMEQ(test, iface->pad, data, sizeof(data));
-	KUNIT_EXPECT_EQ(test, iface->pad[DCHID_REPORT_PAD_SIZE - 1], 0);
+	KUNIT_EXPECT_MEMEQ(test, iface->pad, data, data_len);
+	KUNIT_EXPECT_EQ(test, iface->pad[iface->pad_size - 1], 0);
+
+	dchid_stop(hid);
+	KUNIT_EXPECT_NULL(test, iface->pad);
+	KUNIT_EXPECT_EQ(test, iface->pad_size, 0U);
+	iface->hid = NULL;
+}
+
+static void dchid_numbered_short_report_test(struct kunit *test)
+{
+	static const u8 descriptor[] = {
+		0x05, 0x01, 0x09, 0x04, 0xa1, 0x01,
+		0x85, 0x01, 0x09, 0x30, 0x15, 0x00, 0x26, 0xff, 0x00,
+		0x75, 0x08, 0x96, 0x00, 0x01, 0x81, 0x02, 0xc0,
+	};
+	struct dchid_iface *iface = test->priv;
+	u8 data[] = { 1, 0x12, 0x34 };
+
+	iface->clamped = true;
+	dchid_test_run_padded_report(test, iface, descriptor, sizeof(descriptor),
+				     data, sizeof(data), 257);
+}
+
+/*
+ * Pad capacity must follow the parsed aggregate report length, not a single
+ * clamped Report Size item: test both an oversized field plus another field
+ * and an oversized field with Report Count > 1.
+ */
+static void dchid_clamped_aggregate_pad_test(struct kunit *test)
+{
+	struct dchid_iface *iface = test->priv;
+	struct {
+		struct dchid_init_hdr hdr;
+		struct dchid_init_block_hdr block;
+		u8 descriptor[34];
+	} __packed extra_field = {
+		.hdr = { .iface = 1, .more_packets = 1 },
+		.block = { .type = INIT_HID_DESCRIPTOR, .length = 34 },
+		.descriptor = {
+			0x06, 0x00, 0xff,		/* Usage Page (Vendor) */
+			0x09, 0x01,			/* Usage (1) */
+			0xa1, 0x01,			/* Collection (Application) */
+			0x85, 0x01,			/*   Report ID (1) */
+			0x09, 0x01,			/*   Usage (1) */
+			0x15, 0x00, 0x26, 0xff, 0x00,	/*   Logical Min 0, Max 255 */
+			0x77, 0x00, 0x00, 0x08, 0x00,	/*   Report Size (0x80000) */
+			0x95, 0x01,			/*   Report Count (1) */
+			0x81, 0x02,			/*   Input (Data,Var,Abs) */
+			0x09, 0x02,			/*   Usage (2) */
+			0x75, 0x08,			/*   Report Size (8) */
+			0x95, 0x01,			/*   Report Count (1) */
+			0x81, 0x02,			/*   Input (Data,Var,Abs) */
+			0xc0,				/* End Collection */
+		},
+	};
+	struct {
+		struct dchid_init_hdr hdr;
+		struct dchid_init_block_hdr block;
+		u8 descriptor[24];
+	} __packed multi_count = {
+		.hdr = { .iface = 1, .more_packets = 1 },
+		.block = { .type = INIT_HID_DESCRIPTOR, .length = 24 },
+		.descriptor = {
+			0x06, 0x00, 0xff,		/* Usage Page (Vendor) */
+			0x09, 0x01,			/* Usage (1) */
+			0xa1, 0x01,			/* Collection (Application) */
+			0x09, 0x01,			/*   Usage (1) */
+			0x15, 0x00, 0x26, 0xff, 0x00,	/*   Logical Min 0, Max 255 */
+			0x77, 0x00, 0x00, 0x08, 0x00,	/*   Report Size (0x80000) */
+			0x95, 0x02,			/*   Report Count (2) */
+			0x81, 0x02,			/*   Input (Data,Var,Abs) */
+			0xc0,				/* End Collection */
+		},
+	};
+	u8 numbered_data[] = { 1, 0x12, 0x34 };
+	u8 unnumbered_data[] = { 0xaa, 0xbb, 0xcc, 0xdd };
+
+	/* 16384 + 8 bits = 2049 payload bytes + 1 report ID byte = 2050. */
+	dchid_handle_init(iface->dchid, &extra_field, sizeof(extra_field));
+	KUNIT_ASSERT_NOT_NULL(test, iface->hid_desc);
+	KUNIT_EXPECT_TRUE(test, iface->clamped);
+	dchid_test_run_padded_report(test, iface, iface->hid_desc, iface->hid_desc_len,
+				     numbered_data, sizeof(numbered_data), 2050);
+
+	/* 16384 * 2 bits = 4096 payload bytes, unnumbered. */
+	dchid_handle_init(iface->dchid, &multi_count, sizeof(multi_count));
+	KUNIT_ASSERT_NOT_NULL(test, iface->hid_desc);
+	KUNIT_EXPECT_TRUE(test, iface->clamped);
+	dchid_test_run_padded_report(test, iface, iface->hid_desc, iface->hid_desc_len,
+				     unnumbered_data, sizeof(unnumbered_data), 4096);
 }
 
 static void dchid_packet_checksum_test(struct kunit *test)
@@ -397,6 +486,7 @@ static struct kunit_case dchid_parser_cases[] = {
 	KUNIT_CASE(dchid_init_descriptor_repeat_test),
 	KUNIT_CASE(dchid_report_size_clamp_test),
 	KUNIT_CASE(dchid_numbered_short_report_test),
+	KUNIT_CASE(dchid_clamped_aggregate_pad_test),
 	KUNIT_CASE(dchid_packet_checksum_test),
 	KUNIT_CASE(dchid_ring_wrap_test),
 	KUNIT_CASE(dchid_ring_bad_header_test),

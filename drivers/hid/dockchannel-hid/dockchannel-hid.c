@@ -178,7 +178,9 @@ struct dchid_iface {
 
 	void *hid_desc;
 	size_t hid_desc_len;
-	u8 *pad;	/* full-size report buffer, set when Report Size is clamped */
+	bool clamped;		/* Report Size was clamped; pad short input reports */
+	u8 *pad;		/* report buffer sized from parsed input reports */
+	size_t pad_size;
 
 	struct gpio_desc *gpio;
 	char gpio_name[MAX_GPIO_NAME];
@@ -914,9 +916,48 @@ err:
 	return ret;
 }
 
+static size_t dchid_max_input_report_len(struct hid_device *hdev)
+{
+	struct hid_report_enum *report_enum = &hdev->report_enum[HID_INPUT_REPORT];
+	size_t max_buf = hdev->ll_driver->max_buffer_size ?: HID_MAX_BUFFER_SIZE;
+	struct hid_report *report;
+	size_t max_len = 0;
+
+	list_for_each_entry(report, &report_enum->report_list, list) {
+		size_t len = DIV_ROUND_UP((size_t)report->size, 8);
+
+		/*
+		 * Match hid_report_raw_event(): numbered reports reserve one
+		 * byte for the report ID inside max_buf.
+		 */
+		if (report_enum->numbered)
+			len = min(len, max_buf - 1) + 1;
+		else
+			len = min(len, max_buf);
+		max_len = max(max_len, len);
+	}
+
+	return max_len;
+}
+
 static int dchid_start(struct hid_device *hdev)
 {
 	struct dchid_iface *iface = hdev->driver_data;
+
+	if (iface->clamped) {
+		size_t pad_size = dchid_max_input_report_len(hdev);
+
+		kfree(iface->pad);
+		iface->pad = NULL;
+		iface->pad_size = 0;
+
+		if (pad_size) {
+			iface->pad = kzalloc(pad_size, GFP_KERNEL);
+			if (!iface->pad)
+				return -ENOMEM;
+			iface->pad_size = pad_size;
+		}
+	}
 
 	if (iface->keyboard_layout_id) {
 		int ret = device_create_file(&hdev->dev, &dev_attr_apple_layout_id);
@@ -927,11 +968,18 @@ static int dchid_start(struct hid_device *hdev)
 	}
 
 	return 0;
-};
+}
 
 static void dchid_stop(struct hid_device *hdev)
 {
 	struct dchid_iface *iface = hdev->driver_data;
+
+	WRITE_ONCE(iface->open, false);
+	if (iface->wq)
+		flush_workqueue(iface->wq);
+	kfree(iface->pad);
+	iface->pad = NULL;
+	iface->pad_size = 0;
 
 	if (iface->keyboard_layout_id)
 		device_remove_file(&hdev->dev, &dev_attr_apple_layout_id);
@@ -1104,17 +1152,20 @@ static int dchid_create_interface(struct dchid_iface *iface)
 
 /* hid-core rejects any Report Size above this (see hid_parser_global()). */
 #define DCHID_MAX_REPORT_SIZE	16384
-#define DCHID_REPORT_PAD_SIZE	(DCHID_MAX_REPORT_SIZE / 8 + 1)
 
 /*
  * The T6050 multi-touch firmware declares its raw touch report as one item of
  * 0x80000 bits. The magicmouse driver reads those reports in raw_event() and
  * never looks at the field layout, so clamp every Report Size item to what
- * hid-core accepts instead of failing the whole interface.
+ * hid-core accepts instead of failing the whole interface. The padded report
+ * buffer is sized in dchid_start() from the validated aggregate input report
+ * lengths after hid_open_report().
  */
-static int dchid_clamp_report_sizes(struct dchid_iface *iface, u8 *desc, size_t len)
+static void dchid_clamp_report_sizes(struct dchid_iface *iface, u8 *desc, size_t len)
 {
 	size_t i = 0;
+
+	iface->clamped = false;
 
 	while (i < len) {
 		u8 prefix = desc[i];
@@ -1124,14 +1175,14 @@ static int dchid_clamp_report_sizes(struct dchid_iface *iface, u8 *desc, size_t 
 
 		if (prefix == 0xfe) {
 			if (i + 1 >= len)
-				return 0;
+				return;
 			i += 3 + desc[i + 1];
 			continue;
 		}
 		if (n == 3)
 			n = 4;
 		if (i + 1 + n > len)
-			return 0;
+			return;
 
 		if ((prefix & 0xfc) == 0x74 && n >= 2) {
 			for (j = 0; j < n; j++)
@@ -1140,21 +1191,13 @@ static int dchid_clamp_report_sizes(struct dchid_iface *iface, u8 *desc, size_t 
 				dev_info(iface->dchid->dev,
 					 "%s: clamping Report Size %u to %u\n",
 					 iface->name, val, DCHID_MAX_REPORT_SIZE);
-				if (!iface->pad) {
-					iface->pad = devm_kzalloc(iface->dchid->dev,
-								  DCHID_REPORT_PAD_SIZE,
-								  GFP_KERNEL);
-					if (!iface->pad)
-						return -ENOMEM;
-				}
+				iface->clamped = true;
 				for (j = 0; j < n; j++)
 					desc[i + 1 + j] = (DCHID_MAX_REPORT_SIZE >> (8 * j)) & 0xff;
 			}
 		}
 		i += 1 + n;
 	}
-
-	return 0;
 }
 
 static void dchid_handle_descriptor(struct dchid_iface *iface, void *hid_desc, size_t desc_len)
@@ -1180,13 +1223,7 @@ static void dchid_handle_descriptor(struct dchid_iface *iface, void *hid_desc, s
 		devm_kfree(iface->dchid->dev, iface->hid_desc);
 	iface->hid_desc = desc;
 	iface->hid_desc_len = desc_len;
-	if (dchid_clamp_report_sizes(iface, iface->hid_desc, desc_len)) {
-		/* No padded-report buffer: leave no descriptor, as when its copy fails. */
-		dev_err(iface->dchid->dev, "%s: no memory for the report buffer\n", iface->name);
-		devm_kfree(iface->dchid->dev, iface->hid_desc);
-		iface->hid_desc = NULL;
-		iface->hid_desc_len = 0;
-	}
+	dchid_clamp_report_sizes(iface, iface->hid_desc, desc_len);
 }
 
 static void dchid_handle_ready(struct dockchannel_hid *dchid, void *data, size_t length)
@@ -1429,16 +1466,17 @@ static void dchid_handle_report(struct dchid_iface *iface, void *data, size_t le
 		return;
 
 	/*
-	 * Include space for the report ID: hid-core counts the clamped field
-	 * size in payload bytes. raw_event() still sees the true frame length.
-	 * If hid-core also walks the opaque field, its scalar extractor warns
-	 * once and reads at most 32 bits from the padded payload.
+	 * Pad short reports on clamped interfaces to the largest parsed input
+	 * report length so hid-core accepts the frame while raw_event() still
+	 * sees the true length. If hid-core also walks the opaque field, its
+	 * scalar extractor warns once and reads at most 32 bits from the
+	 * padded payload.
 	 */
-	if (iface->pad && length < DCHID_REPORT_PAD_SIZE) {
+	if (iface->pad && length < iface->pad_size) {
 		memcpy(iface->pad, data, length);
-		memset(iface->pad + length, 0, DCHID_REPORT_PAD_SIZE - length);
+		memset(iface->pad + length, 0, iface->pad_size - length);
 		hid_safe_input_report(iface->hid, HID_INPUT_REPORT, iface->pad,
-				      DCHID_REPORT_PAD_SIZE, length, 1);
+				      iface->pad_size, length, 1);
 		return;
 	}
 
