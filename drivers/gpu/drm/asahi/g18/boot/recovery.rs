@@ -48,6 +48,17 @@ pub(super) const fn poll_interval_us(us: i64) -> i64 {
     if us < 2_000 { 20 } else if us < 50_000 { 200 } else { 1_000 }
 }
 
+/// Window after a kick during which `wait_job` busy-polls instead of
+/// sleeping. Most compute commands retire within a few hundred
+/// microseconds of their RTKit kick, and `fsleep` floors well above the
+/// requested microseconds once the timer setup and wake-up latency are
+/// added, so a synchronous caller pays at least one sleep-and-wake round
+/// trip for a job that is already done. A bounded `udelay` poll costs at
+/// most this window of CPU per command and observes retirement at
+/// microsecond precision; a job still running at the boundary falls back
+/// to the sleep poll below unchanged.
+pub(super) const BUSY_POLL_US: i64 = 400;
+
 /// Upper bounds, in microseconds, of the latency buckets; the last bucket is
 /// open-ended.
 const LATENCY_BOUNDS_US: [i64; 6] = [100, 300, 1_000, 3_000, 10_000, 100_000];
@@ -442,7 +453,13 @@ impl G18Session {
                 since = Instant::<Monotonic>::now();
                 reported = 0;
             }
-            fsleep(Delta::from_micros(poll_interval_us(us)));
+            if us < BUSY_POLL_US && recovery.is_none() {
+                // See BUSY_POLL_US: busy-poll through the likely-fast
+                // window; udelay spins for exactly what it is asked.
+                udelay(Delta::from_micros(poll_interval_us(us)));
+            } else {
+                fsleep(Delta::from_micros(poll_interval_us(us)));
+            }
         }
     }
 }

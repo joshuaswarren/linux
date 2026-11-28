@@ -83,7 +83,7 @@ use kernel::{
     prelude::*,
     soc::apple::rtkit,
     sync::{aref::ARef, Arc, Mutex},
-    time::{delay::fsleep, Delta, Instant, Monotonic},
+    time::{delay::{fsleep, udelay}, Delta, Instant, Monotonic},
 };
 
 // ---------------------------------------------------------------------------
